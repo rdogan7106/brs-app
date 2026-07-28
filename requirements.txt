@@ -1,5 +1,6 @@
 Plaintext
 streamlit
 pandas
-yfinance
 openpyxl
+yfinance>=0.2.40
+curl_cffi
