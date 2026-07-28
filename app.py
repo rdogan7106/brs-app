@@ -1,9 +1,7 @@
 import streamlit as st
 import pandas as pd
-import yfinance as yf
-from datetime import datetime
-import io
 import requests
+from datetime import datetime
 
 # Sayfa Yapılandırması
 st.set_page_config(
@@ -41,11 +39,38 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Yahoo Finance bot engeli aşma oturumu
-session = requests.Session()
-session.headers.update({
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-})
+# Yahoo Direct API üzerinden veri çekme fonksiyonu (Bot engelini aşar)
+def yahoo_veri_cek(symbol):
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=6mo&interval=1d"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Origin': 'https://finance.yahoo.com',
+        'Referer': f'https://finance.yahoo.com/quote/{symbol}'
+    }
+    try:
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code != 200:
+            return None
+        
+        data = res.json()
+        result = data['chart']['result'][0]
+        timestamps = result['timestamp']
+        quote = result['indicators']['quote'][0]
+        
+        df = pd.DataFrame({
+            'Open': quote.get('open'),
+            'High': quote.get('high'),
+            'Low': quote.get('low'),
+            'Close': quote.get('close'),
+            'Volume': quote.get('volume')
+        }, index=pd.to_datetime(timestamps, unit='s'))
+        
+        df = df.dropna(subset=['Close', 'High', 'Low'])
+        return df
+    except Exception:
+        return None
 
 def rsi_hesapla(prices, period=14):
     delta = prices.diff()
@@ -93,7 +118,7 @@ else:
                 df_ex = pd.read_excel(file)
             if 'Hisse' in df_ex.columns:
                 hisseler = df_ex['Hisse'].dropna().astype(str).tolist()
-        except Exception as e:
+        except Exception:
             st.sidebar.error("Dosya okunamadı. Lütfen CSV formatında deneyin.")
 
 sinyal_filtre = st.sidebar.multiselect(
@@ -122,23 +147,15 @@ if st.button("🚀 Analizi Başlat", type="primary", use_container_width=True):
             durum_metni.text(f"Analiz ediliyor ({idx + 1}/{toplam_hisse}): {h_clean}")
             
             try:
-                # Ticker objesini özel oturum ile tanımlıyoruz
-                ticker = yf.Ticker(h_yf, session=session)
-                df = ticker.history(period="6mo", interval="1d")
-                
-                # Sütun yapısını düzelt
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
-                
-                df = df.dropna(subset=['Close', 'High', 'Low'])
-                if df.empty or len(df) < 30:
+                df = yahoo_veri_cek(h_yf)
+                if df is None or df.empty or len(df) < 30:
                     continue
 
                 sirket_adi = h_clean
 
-                close = df['Close'].dropna()
-                high = df['High'].dropna()
-                low = df['Low'].dropna()
+                close = df['Close']
+                high = df['High']
+                low = df['Low']
                 
                 son_fiyat = float(close.iloc[-1])
                 son_high = float(high.iloc[-1])
@@ -317,7 +334,7 @@ if st.button("🚀 Analizi Başlat", type="primary", use_container_width=True):
                     use_container_width=True
                 )
 
-            # CSV İndirme (Hatasız ve Hızlı)
+            # CSV İndirme
             csv_data = df_res.to_csv(index=False).encode('utf-8-sig')
             
             st.download_button(
