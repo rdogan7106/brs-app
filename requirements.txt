@@ -1,5 +1,4 @@
 Plaintext
-
 streamlit
 pandas
 yfinance
