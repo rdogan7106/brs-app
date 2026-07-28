@@ -9,20 +9,18 @@ st.set_page_config(
     page_title="Avanza Detaylı Borsa Analiz", 
     page_icon="📊", 
     layout="wide",
-    initial_sidebar_state="collapsed"  # Mobilde ilk açılışta yan paneli kapalı tutarak ekran alanını artırır
+    initial_sidebar_state="collapsed"
 )
 
 # Mobil Özel CSS Stilleri
 st.markdown("""
     <style>
-    /* Mobil cihazlarda kenar boşluklarını optimize etme */
     .block-container {
         padding-top: 1.5rem;
         padding-bottom: 2rem;
         padding-left: 0.8rem;
         padding-right: 0.8rem;
     }
-    /* Mobil Kart Tasarımı */
     .stock-card {
         background-color: #f8f9fa;
         border: 1px solid #e9ecef;
@@ -60,7 +58,7 @@ gorunum_modu = st.sidebar.radio(
     ["Mobil Kart Görünümü (Tavsiye)", "Klasik Masaüstü Tablosu"]
 )
 
-yukleme_yontemi = st.sidebar.radio("Hisse Giriş Yöntemi:", ["Varsayılan Liste (114 Hisse)", "Excel Yükle"])
+yukleme_yontemi = st.sidebar.radio("Hisse Giriş Yöntemi:", ["Varsayılan Liste (114 Hisse)", "Excel / CSV Yükle"])
 
 varsayilan_liste = (
     "ELUX-B, ANOD-B, LIME, ELUX-A, MIPS, ARLA, NTEK-B, PRIC-B, BILL, BOOZT, NANO, QLINEA, XBRANE, HOLM-B, "
@@ -79,11 +77,17 @@ if yukleme_yontemi == "Varsayılan Liste (114 Hisse)":
     girdi = st.sidebar.text_area("Hisse Listeniz:", value=varsayilan_liste, height=120)
     hisseler = [h.strip() for h in girdi.split(",") if h.strip()]
 else:
-    file = st.sidebar.file_uploader("Excel Yükle (.xlsx)", type=["xlsx"])
+    file = st.sidebar.file_uploader("Dosya Yükle (.xlsx veya .csv)", type=["xlsx", "csv"])
     if file:
-        df_ex = pd.read_excel(file)
-        if 'Hisse' in df_ex.columns:
-            hisseler = df_ex['Hisse'].dropna().astype(str).tolist()
+        try:
+            if file.name.endswith('.csv'):
+                df_ex = pd.read_csv(file)
+            else:
+                df_ex = pd.read_excel(file)
+            if 'Hisse' in df_ex.columns:
+                hisseler = df_ex['Hisse'].dropna().astype(str).tolist()
+        except Exception as e:
+            st.sidebar.error("Dosya okunamadı. Lütfen CSV formatında deneyin.")
 
 sinyal_filtre = st.sidebar.multiselect(
     "Sinyal Filtresi:",
@@ -111,9 +115,10 @@ if st.button("🚀 Analizi Başlat", type="primary", use_container_width=True):
             durum_metni.text(f"Analiz ediliyor ({idx + 1}/{toplam_hisse}): {h_clean}")
             
             try:
-                ticker = yf.Ticker(h_yf)
-                df = ticker.history(period="6mo", interval="1d")
+                # Yahoo Finance engellerini aşmak için indirme metodu
+                df = yf.download(h_yf, period="6mo", interval="1d", progress=False)
                 
+                # Sütun yapısını düzelt
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
                 
@@ -122,11 +127,6 @@ if st.button("🚀 Analizi Başlat", type="primary", use_container_width=True):
                     continue
 
                 sirket_adi = h_clean
-                try:
-                    info = ticker.info
-                    sirket_adi = info.get('longName') or info.get('shortName') or h_clean
-                except:
-                    sirket_adi = h_clean
 
                 close = df['Close'].dropna()
                 high = df['High'].dropna()
@@ -309,16 +309,14 @@ if st.button("🚀 Analizi Başlat", type="primary", use_container_width=True):
                     use_container_width=True
                 )
 
-            # Excel İndirme (Tam Genişlik Buton)
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df_res.to_excel(writer, index=False, sheet_name='Tahminler')
+            # CSV İndirme (Hatasız ve Hızlı)
+            csv_data = df_res.to_csv(index=False).encode('utf-8-sig')
             
             st.download_button(
-                label="📥 Tüm Sonuçları Excel Olarak İndir (.xlsx)",
-                data=output.getvalue(),
-                file_name=f"isvec_borsa_analiz_{bugun_tarih}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                label="📥 Tüm Sonuçları İndir (.csv)",
+                data=csv_data,
+                file_name=f"isvec_borsa_analiz_{bugun_tarih}.csv",
+                mime="text/csv",
                 type="primary",
                 use_container_width=True
             )
