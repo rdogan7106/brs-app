@@ -4,7 +4,43 @@ import yfinance as yf
 from datetime import datetime
 import io
 
-st.set_page_config(page_title="Avanza Detaylı Borsa Analiz & Tahmin", page_icon="📊", layout="wide")
+# Sayfa Yapılandırması
+st.set_page_config(
+    page_title="Avanza Detaylı Borsa Analiz", 
+    page_icon="📊", 
+    layout="wide",
+    initial_sidebar_state="collapsed"  # Mobilde ilk açılışta yan paneli kapalı tutarak ekran alanını artırır
+)
+
+# Mobil Özel CSS Stilleri
+st.markdown("""
+    <style>
+    /* Mobil cihazlarda kenar boşluklarını optimize etme */
+    .block-container {
+        padding-top: 1.5rem;
+        padding-bottom: 2rem;
+        padding-left: 0.8rem;
+        padding-right: 0.8rem;
+    }
+    /* Mobil Kart Tasarımı */
+    .stock-card {
+        background-color: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 12px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    @media (prefers-color-scheme: dark) {
+        .stock-card {
+            background-color: #1e2129;
+            border-color: #2d323e;
+        }
+    }
+    .badge-green { color: #2e7d32; font-weight: bold; }
+    .badge-red { color: #c62828; font-weight: bold; }
+    </style>
+""", unsafe_allow_html=True)
 
 def rsi_hesapla(prices, period=14):
     delta = prices.diff()
@@ -13,13 +49,19 @@ def rsi_hesapla(prices, period=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
-st.title("🇸🇪 İsveç Borsası Çoklu Zaman Dilimi Analizi & 3 Günlük Tahmin Paneli")
-st.caption("Günlük Net Yüzde Tahminleri (Al-Sat Değerlendirmesi İçin) + 3-1-1 Zaman Dilimi Analizi ve Min/Max Fiyat Tahminleri")
+st.title("🇸🇪 İsveç Borsası Analiz & Tahmin")
+st.caption("📱 Mobil & Masaüstü Uyumlu Al-Sat Tahmin Paneli")
 
-st.sidebar.header("⚙️ Ayarlar & Hisse Seçimi")
-yukleme_yontemi = st.sidebar.radio("Hisse Giriş Yöntemi:", ["Varsayılan Tam Liste (114 Hisse)", "Excel Dosyası Yükle"])
+# --- YAN PANEL (SETTINGS) ---
+st.sidebar.header("⚙️ Ayarlar & Filtreler")
 
-# 114 Hisselik Tam İsveç Listesi
+gorunum_modu = st.sidebar.radio(
+    "📱 Görünüm Modu:", 
+    ["Mobil Kart Görünümü (Tavsiye)", "Klasik Masaüstü Tablosu"]
+)
+
+yukleme_yontemi = st.sidebar.radio("Hisse Giriş Yöntemi:", ["Varsayılan Liste (114 Hisse)", "Excel Yükle"])
+
 varsayilan_liste = (
     "ELUX-B, ANOD-B, LIME, ELUX-A, MIPS, ARLA, NTEK-B, PRIC-B, BILL, BOOZT, NANO, QLINEA, XBRANE, HOLM-B, "
     "PRFO, RAY-B, BESQ-B, PROFF, CLAS-B, REJL-B, SEZI, SECT-B, BIOA-B, SKIS-B, RROS, CER, YUBICO, HOLM-A, "
@@ -33,8 +75,8 @@ varsayilan_liste = (
 
 hisseler = []
 
-if yukleme_yontemi == "Varsayılan Tam Liste (114 Hisse)":
-    girdi = st.sidebar.text_area("Hisse Listeniz:", value=varsayilan_liste, height=180)
+if yukleme_yontemi == "Varsayılan Liste (114 Hisse)":
+    girdi = st.sidebar.text_area("Hisse Listeniz:", value=varsayilan_liste, height=120)
     hisseler = [h.strip() for h in girdi.split(",") if h.strip()]
 else:
     file = st.sidebar.file_uploader("Excel Yükle (.xlsx)", type=["xlsx"])
@@ -43,7 +85,14 @@ else:
         if 'Hisse' in df_ex.columns:
             hisseler = df_ex['Hisse'].dropna().astype(str).tolist()
 
-if st.sidebar.button("🚀 Detaylı Analiz & 3 Günlük Tahmin Başlat", type="primary"):
+sinyal_filtre = st.sidebar.multiselect(
+    "Sinyal Filtresi:",
+    ["GÜÇLÜ AL", "AL", "NÖTR", "SAT"],
+    default=["GÜÇLÜ AL", "AL", "NÖTR", "SAT"]
+)
+
+# Mobil Uyumlu Analiz Butonu
+if st.button("🚀 Analizi Başlat", type="primary", use_container_width=True):
     if not hisseler:
         st.warning("Lütfen analiz etmek için hisse ekleyin.")
     else:
@@ -59,7 +108,7 @@ if st.sidebar.button("🚀 Detaylı Analiz & 3 Günlük Tahmin Başlat", type="p
             h_yf = h_clean if h_clean.endswith(".ST") else f"{h_clean}.ST"
             
             bar.progress((idx + 1) / toplam_hisse)
-            durum_metni.text(f"Analiz ediliyor ({idx + 1}/{toplam_hisse}): {h_clean}...")
+            durum_metni.text(f"Analiz ediliyor ({idx + 1}/{toplam_hisse}): {h_clean}")
             
             try:
                 ticker = yf.Ticker(h_yf)
@@ -69,7 +118,6 @@ if st.sidebar.button("🚀 Detaylı Analiz & 3 Günlük Tahmin Başlat", type="p
                     df.columns = df.columns.get_level_values(0)
                 
                 df = df.dropna(subset=['Close', 'High', 'Low'])
-                
                 if df.empty or len(df) < 30:
                     continue
 
@@ -84,14 +132,11 @@ if st.sidebar.button("🚀 Detaylı Analiz & 3 Günlük Tahmin Başlat", type="p
                 high = df['High'].dropna()
                 low = df['Low'].dropna()
                 
-                if close.empty:
-                    continue
-
                 son_fiyat = float(close.iloc[-1])
                 son_high = float(high.iloc[-1])
                 son_low = float(low.iloc[-1])
 
-                # --- ÇOKLU ZAMAN DİLİMİ PERFORMANS & VOLATİLİTE ---
+                # Getiri & Volatilite
                 df_1w = close.tail(5)
                 getiri_1w = ((close.iloc[-1] - close.iloc[-5]) / close.iloc[-5]) * 100 if len(close) >= 5 else 0.0
                 vol_1w = df_1w.pct_change().std() * 100 if len(df_1w) > 1 else 0.0
@@ -104,7 +149,7 @@ if st.sidebar.button("🚀 Detaylı Analiz & 3 Günlük Tahmin Başlat", type="p
                 getiri_3m = ((close.iloc[-1] - close.iloc[-60]) / close.iloc[-60]) * 100 if len(close) >= 60 else 0.0
                 vol_3m = df_3m.pct_change().std() * 100 if len(df_3m) > 1 else 0.0
 
-                # --- TEKNİK GÖSTERGELER ---
+                # Göstergeler
                 rsi_series = rsi_hesapla(close)
                 rsi_valid = rsi_series.dropna()
                 son_rsi = float(rsi_valid.iloc[-1]) if not rsi_valid.empty else 50.0
@@ -131,7 +176,7 @@ if st.sidebar.button("🚀 Detaylı Analiz & 3 Günlük Tahmin Başlat", type="p
                 else:
                     sinyal = "NÖTR"
 
-                # --- ÖNÜMÜZDEKİ 3 GÜN İÇİN NET YÜZDE VE MIN/MAX TAHMİNİ ---
+                # 3 Günlük Yüzde Tahminleri
                 gunluk_getiriler = df_1m.pct_change().dropna()
                 gunluk_ort_getiri = gunluk_getiriler.mean() * 100 if len(gunluk_getiriler) > 0 else 0.0
                 gunluk_vol = gunluk_getiriler.std() * 100 if len(gunluk_getiriler) > 0 else 1.0
@@ -139,21 +184,14 @@ if st.sidebar.button("🚀 Detaylı Analiz & 3 Günlük Tahmin Başlat", type="p
                 sma_5 = close.tail(5).mean()
                 sma_20 = close.tail(20).mean()
                 
-                if son_fiyat > sma_5 and sma_5 > sma_20:
-                    yon = 1.0
-                elif son_fiyat < sma_5 and sma_5 < sma_20:
-                    yon = -1.0
-                else:
-                    yon = 0.2 if gunluk_ort_getiri > 0 else -0.2
+                yon = 1.0 if son_fiyat > sma_5 > sma_20 else (-1.0 if son_fiyat < sma_5 < sma_20 else (0.2 if gunluk_ort_getiri > 0 else -0.2))
 
-                # 1., 2. ve 3. Gün Net Yüzde Tahminleri (Eski mantığa dayalı net tahmin)
                 tahmin_yuzde_1 = gunluk_ort_getiri + (yon * (gunluk_vol * 0.4))
                 tahmin_yuzde_2 = gunluk_ort_getiri + (yon * (gunluk_vol * 0.3))
                 tahmin_yuzde_3 = gunluk_ort_getiri + (yon * (gunluk_vol * 0.2))
 
                 tahminler_3gun = {}
                 anlik_fiyat = son_fiyat
-                
                 for gun in range(1, 4):
                     gun_merkez = anlik_fiyat * (1.0 + (gun * (gunluk_ort_getiri/100) * yon))
                     gun_sapma = son_fiyat * (gunluk_vol/100) * 1.2 * (1 + (gun * 0.1))
@@ -161,26 +199,19 @@ if st.sidebar.button("🚀 Detaylı Analiz & 3 Günlük Tahmin Başlat", type="p
                     gun_min = round(max(gun_merkez - gun_sapma, son_fiyat * 0.5), 2)
                     gun_max = round(gun_merkez + gun_sapma, 2)
                     
-                    pct_min = round(((gun_min - son_fiyat) / son_fiyat) * 100, 2)
-                    pct_max = round(((gun_max - son_fiyat) / son_fiyat) * 100, 2)
-                    
                     tahminler_3gun[f'Gün {gun} Min'] = gun_min
-                    tahminler_3gun[f'Gün {gun} Min %'] = pct_min
+                    tahminler_3gun[f'Gün {gun} Min %'] = round(((gun_min - son_fiyat) / son_fiyat) * 100, 2)
                     tahminler_3gun[f'Gün {gun} Max'] = gun_max
-                    tahminler_3gun[f'Gün {gun} Max %'] = pct_max
-                    
+                    tahminler_3gun[f'Gün {gun} Max %'] = round(((gun_max - son_fiyat) / son_fiyat) * 100, 2)
                     anlik_fiyat = gun_merkez
 
                 rapor.append({
                     'Şirket Adı': sirket_adi,
                     'Kod': h_clean,
                     'Son Fiyat (SEK)': round(son_fiyat, 2),
-                    
-                    # SON FİYATTAN SONRA GELEN NET 3 GÜNLÜK TAHMİN SÜTUNLARI (AL-SAT DEĞERLENDİRMESİ İÇİN)
                     '1. Gün Tahmin (%)': round(tahmin_yuzde_1, 2),
                     '2. Gün Tahmin (%)': round(tahmin_yuzde_2, 2),
                     '3. Gün Tahmin (%)': round(tahmin_yuzde_3, 2),
-                    
                     'Sinyal': sinyal,
                     '3 Aylık Getiri (%)': round(getiri_3m, 2),
                     '1 Aylık Getiri (%)': round(getiri_1m, 2),
@@ -188,23 +219,18 @@ if st.sidebar.button("🚀 Detaylı Analiz & 3 Günlük Tahmin Başlat", type="p
                     '3 Aylık Volatilite (%)': round(vol_3m, 2),
                     '1 Aylık Volatilite (%)': round(vol_1m, 2),
                     '1 Haftalık Volatilite (%)': round(vol_1w, 2),
-                    
-                    # MIN/MAX Tahminleri
                     '1. Gün Min': tahminler_3gun['Gün 1 Min'],
                     '1. Gün Min (%)': tahminler_3gun['Gün 1 Min %'],
                     '1. Gün Max': tahminler_3gun['Gün 1 Max'],
                     '1. Gün Max (%)': tahminler_3gun['Gün 1 Max %'],
-                    
                     '2. Gün Min': tahminler_3gun['Gün 2 Min'],
                     '2. Gün Min (%)': tahminler_3gun['Gün 2 Min %'],
                     '2. Gün Max': tahminler_3gun['Gün 2 Max'],
                     '2. Gün Max (%)': tahminler_3gun['Gün 2 Max %'],
-                    
                     '3. Gün Min': tahminler_3gun['Gün 3 Min'],
                     '3. Gün Min (%)': tahminler_3gun['Gün 3 Min %'],
                     '3. Gün Max': tahminler_3gun['Gün 3 Max'],
                     '3. Gün Max (%)': tahminler_3gun['Gün 3 Max %'],
-                    
                     'Destek (S1)': round(destek_s1, 2),
                     'Direnç (R1)': round(direnc_r1, 2),
                     'Stop-Loss': round(stop_loss, 2),
@@ -213,7 +239,7 @@ if st.sidebar.button("🚀 Detaylı Analiz & 3 Günlük Tahmin Başlat", type="p
                     'Analiz Tarihi': bugun_tarih
                 })
 
-            except Exception as e:
+            except Exception:
                 pass
 
         durum_metni.empty()
@@ -221,61 +247,80 @@ if st.sidebar.button("🚀 Detaylı Analiz & 3 Günlük Tahmin Başlat", type="p
         if rapor:
             df_res = pd.DataFrame(rapor)
             
+            # Filtreleme
+            if sinyal_filtre:
+                df_res = df_res[df_res['Sinyal'].isin(sinyal_filtre)]
+
             st.markdown("---")
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Analiz Edilen Hisse", len(df_res))
-            col2.metric("1. Gün Yükseliş Beklenenler", len(df_res[df_res['1. Gün Tahmin (%)'] > 0]))
-            col3.metric("1. Gün Düşüş Beklenenler", len(df_res[df_res['1. Gün Tahmin (%)'] < 0]))
+            # Mobilde Özet Metrikler
+            c1, c2 = st.columns(2)
+            c1.metric("Analiz Edilen", len(df_res))
+            c2.metric("1. Gün Yükseliş Beklenen", len(df_res[df_res['1. Gün Tahmin (%)'] > 0]))
 
-            st.subheader("📊 Çoklu Zaman Dilimi & Net 3 Günlük Tahmin Tablosu")
-            
-            st.dataframe(
-                df_res.style.format({
-                    'Son Fiyat (SEK)': '{:.2f}',
-                    '1. Gün Tahmin (%)': '{:+.2f}%',
-                    '2. Gün Tahmin (%)': '{:+.2f}%',
-                    '3. Gün Tahmin (%)': '{:+.2f}%',
-                    '3 Aylık Getiri (%)': '{:.2f}',
-                    '1 Aylık Getiri (%)': '{:.2f}',
-                    '1 Haftalık Getiri (%)': '{:.2f}',
-                    '3 Aylık Volatilite (%)': '{:.2f}',
-                    '1 Aylık Volatilite (%)': '{:.2f}',
-                    '1 Haftalık Volatilite (%)': '{:.2f}',
-                    '1. Gün Min': '{:.2f}',
-                    '1. Gün Min (%)': '{:+.2f}%',
-                    '1. Gün Max': '{:.2f}',
-                    '1. Gün Max (%)': '{:+.2f}%',
-                    '2. Gün Min': '{:.2f}',
-                    '2. Gün Min (%)': '{:+.2f}%',
-                    '2. Gün Max': '{:.2f}',
-                    '2. Gün Max (%)': '{:+.2f}%',
-                    '3. Gün Min': '{:.2f}',
-                    '3. Gün Min (%)': '{:+.2f}%',
-                    '3. Gün Max': '{:.2f}',
-                    '3. Gün Max (%)': '{:+.2f}%',
-                    'Destek (S1)': '{:.2f}',
-                    'Direnç (R1)': '{:.2f}',
-                    'Stop-Loss': '{:.2f}',
-                    'RSI (14)': '{:.1f}',
-                    'Hacim Katı': '{:.1f}'
-                }), 
-                use_container_width=True
-            )
-            
-            dosya_adi = f"isvec_3gunluk_al_sat_tahminleri_{bugun_tarih}.xlsx"
+            # MOBİL KART GÖRÜNÜMÜ
+            if gorunum_modu == "Mobil Kart Görünümü (Tavsiye)":
+                st.subheader("📱 Mobil Hisse Kartları")
+                for _, row in df_res.iterrows():
+                    t1_color = "green" if row['1. Gün Tahmin (%)'] > 0 else "red"
+                    t2_color = "green" if row['2. Gün Tahmin (%)'] > 0 else "red"
+                    t3_color = "green" if row['3. Gün Tahmin (%)'] > 0 else "red"
+                    
+                    st.markdown(f"""
+                    <div class="stock-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h4 style="margin:0; font-size: 1.1rem;">{row['Kod']} - <span style="font-size:0.9rem; font-weight:normal;">{row['Şirket Adı'][:18]}</span></h4>
+                            <span style="background-color: {'#d4edda' if row['Sinyal'] in ['AL', 'GÜÇLÜ AL'] else '#f8d7da'}; color: {'#155724' if row['Sinyal'] in ['AL', 'GÜÇLÜ AL'] else '#721c24'}; padding: 3px 8px; border-radius: 5px; font-weight: bold; font-size: 0.8rem;">{row['Sinyal']}</span>
+                        </div>
+                        <div style="margin-top: 8px; font-size: 0.95rem;">
+                            <b>Fiyat:</b> {row['Son Fiyat (SEK)']} SEK | <b>RSI:</b> {row['RSI (14)']} | <b>Hacim:</b> {row['Hacim Katı']}x
+                        </div>
+                        <hr style="margin: 8px 0;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
+                            <span><b>1. Gün:</b> <span class="badge-{t1_color}">%{row['1. Gün Tahmin (%)']:+}</span></span>
+                            <span><b>2. Gün:</b> <span class="badge-{t2_color}">%{row['2. Gün Tahmin (%)']:+}</span></span>
+                            <span><b>3. Gün:</b> <span class="badge-{t3_color}">%{row['3. Gün Tahmin (%)']:+}</span></span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    with st.expander(f"🔍 {row['Kod']} Detaylı Min/Max & Destek"):
+                        st.write(f"**1. Gün Aralık:** {row['1. Gün Min']} ({row['1. Gün Min (%)']}%) — {row['1. Gün Max']} ({row['1. Gün Max (%)']}%)")
+                        st.write(f"**Destek (S1):** {row['Destek (S1)']} | **Direnç (R1):** {row['Direnç (R1)']}")
+                        st.write(f"**Stop-Loss:** {row['Stop-Loss']}")
 
-            # Excel çıktısını belleğe yazıp indirme
+            else:
+                # MASAÜSTÜ TABLOSU
+                st.subheader("📊 Detaylı Analiz Tablosu")
+                st.dataframe(
+                    df_res.style.format({
+                        'Son Fiyat (SEK)': '{:.2f}',
+                        '1. Gün Tahmin (%)': '{:+.2f}%',
+                        '2. Gün Tahmin (%)': '{:+.2f}%',
+                        '3. Gün Tahmin (%)': '{:+.2f}%',
+                        '3 Aylık Getiri (%)': '{:.2f}',
+                        '1 Aylık Getiri (%)': '{:.2f}',
+                        '1 Haftalık Getiri (%)': '{:.2f}',
+                        '3 Aylık Volatilite (%)': '{:.2f}',
+                        '1 Aylık Volatilite (%)': '{:.2f}',
+                        '1 Haftalık Volatilite (%)': '{:.2f}',
+                        'RSI (14)': '{:.1f}',
+                        'Hacim Katı': '{:.1f}'
+                    }), 
+                    use_container_width=True
+                )
+
+            # Excel İndirme (Tam Genişlik Buton)
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df_res.to_excel(writer, index=False, sheet_name='Analiz ve Tahminler')
-            excel_data = output.getvalue()
+                df_res.to_excel(writer, index=False, sheet_name='Tahminler')
             
             st.download_button(
-                label=f"📥 Tabloyu Excel Dosyası Olarak İndir (.xlsx)",
-                data=excel_data,
-                file_name=dosya_adi,
+                label="📥 Tüm Sonuçları Excel Olarak İndir (.xlsx)",
+                data=output.getvalue(),
+                file_name=f"isvec_borsa_analiz_{bugun_tarih}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary"
+                type="primary",
+                use_container_width=True
             )
         else:
-            st.error("Veriler çekilemedi. Lütfen internet bağlantınızı kontrol edin.")
+            st.error("Veriler çekilemedi.")
