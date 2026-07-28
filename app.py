@@ -3,6 +3,7 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime
 import io
+import requests
 
 # Sayfa Yapılandırması
 st.set_page_config(
@@ -39,6 +40,12 @@ st.markdown("""
     .badge-red { color: #c62828; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
+
+# Yahoo Finance bot engeli aşma oturumu
+session = requests.Session()
+session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+})
 
 def rsi_hesapla(prices, period=14):
     delta = prices.diff()
@@ -115,8 +122,9 @@ if st.button("🚀 Analizi Başlat", type="primary", use_container_width=True):
             durum_metni.text(f"Analiz ediliyor ({idx + 1}/{toplam_hisse}): {h_clean}")
             
             try:
-                # Yahoo Finance engellerini aşmak için indirme metodu
-                df = yf.download(h_yf, period="6mo", interval="1d", progress=False)
+                # Ticker objesini özel oturum ile tanımlıyoruz
+                ticker = yf.Ticker(h_yf, session=session)
+                df = ticker.history(period="6mo", interval="1d")
                 
                 # Sütun yapısını düzelt
                 if isinstance(df.columns, pd.MultiIndex):
