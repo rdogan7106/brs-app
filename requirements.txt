@@ -1,5 +1,4 @@
 Plaintext
-streamlit==1.32.0
-pandas==2.2.1
-yfinance==0.2.38
-openpyxl==3.1.2y
+streamlit
+pandas
+yfinance==0.2.28
