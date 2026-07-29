@@ -89,7 +89,6 @@ def tek_hisse_analiz_et(h_kod):
     h_clean = str(h_kod).strip().upper()
     h_yf = h_clean if h_clean.endswith(".ST") else f"{h_clean}.ST"
     
-    # İki farklı periyotta veri çekiyoruz (Day Trade ve Swing Trade için)
     url_15m = f"https://query1.finance.yahoo.com/v8/finance/chart/{h_yf}?range=5d&interval=15m"
     url_1d = f"https://query1.finance.yahoo.com/v8/finance/chart/{h_yf}?range=3mo&interval=1d"
     
@@ -100,7 +99,7 @@ def tek_hisse_analiz_et(h_kod):
         if res_15m.status_code != 200 or res_1d.status_code != 200:
             return None
         
-        # --- 15 DAKİKALIK VERİ İŞLEME (GÜN İÇİ DAY-TRADE) ---
+        # --- 15 DAKİKALIK VERİ İŞLEME ---
         data_15m = res_15m.json()['chart']['result'][0]
         meta = data_15m.get('meta', {})
         sirket_adi = meta.get('shortName') or meta.get('longName') or h_clean
@@ -116,7 +115,6 @@ def tek_hisse_analiz_et(h_kod):
 
         son_fiyat = float(df_15m['Close'].iloc[-1])
         
-        # Gün İçi İndikatörler (Bollinger, VWAP, 15m RSI)
         sma_20 = df_15m['Close'].rolling(window=20).mean()
         std_20 = df_15m['Close'].rolling(window=20).std()
         upper_band = (sma_20 + (std_20 * 2)).iloc[-1]
@@ -130,7 +128,7 @@ def tek_hisse_analiz_et(h_kod):
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
         son_rsi_15m = float((100 - (100 / (1 + (gain / loss)))).iloc[-1])
 
-        # --- GÜNLÜK VERİ İŞLEME (1, 2, 3 GÜNLÜK TAHMİNLER & YARINKİ ALIŞ) ---
+        # --- GÜNLÜK VERİ İŞLEME ---
         data_1d = res_1d.json()['chart']['result'][0]
         df_1d = pd.DataFrame({
             'Close': data_1d['indicators']['quote'][0].get('close'),
@@ -141,7 +139,6 @@ def tek_hisse_analiz_et(h_kod):
         
         close_1d = df_1d['Close']
         
-        # Günlük ATR (Volatility)
         high_low = df_1d['High'] - df_1d['Low']
         high_close = (df_1d['High'] - close_1d.shift(1)).abs()
         low_close = (df_1d['Low'] - close_1d.shift(1)).abs()
@@ -149,7 +146,6 @@ def tek_hisse_analiz_et(h_kod):
         atr_14_1d = float(true_range.rolling(14).mean().iloc[-1])
         atr_yuzde = (atr_14_1d / son_fiyat) * 100
 
-        # Günlük RSI ve Momentum
         delta_1d = close_1d.diff()
         rs_1d = (delta_1d.where(delta_1d > 0, 0)).rolling(14).mean() / (-delta_1d.where(delta_1d < 0, 0)).rolling(14).mean()
         son_rsi_1d = float((100 - (100 / (1 + rs_1d))).iloc[-1])
@@ -165,7 +161,6 @@ def tek_hisse_analiz_et(h_kod):
         hacim_kati = float(vol_s_1d.iloc[-1] / vol_s_1d.mean()) if vol_s_1d.mean() > 0 else 1.0
         hacim_etkisi = min(hacim_kati, 2.0)
 
-        # 1, 2 ve 3 Günlük Tahmin Yüzdeleri Hesaplama
         tahminler_yuzde = {}
         kumbulatif_fiyat = son_fiyat
         aktif_momentum = momentum
@@ -178,12 +173,9 @@ def tek_hisse_analiz_et(h_kod):
             aktif_momentum *= 0.5 
             hacim_etkisi = max(1.0, hacim_etkisi * 0.8)
 
-        # --- YARIN İÇİN ALIŞ FİYATI HESAPLAMA ---
-        # Mantık: ATR'nin %35'i kadar bir sabah esnemesi (düşüşü), ideal bir alım fırsatıdır.
         yarin_alis = round(son_fiyat - (atr_14_1d * 0.35), 2)
         potansiyel_pik = round(upper_band + (atr_14_1d * 0.1), 2)
 
-        # --- GÜN İÇİ SİNYAL VE STRATEJİ ÜRETİMİ ---
         if son_fiyat >= upper_band and son_rsi_15m > 70:
             sinyal = "PİK YAPTI (SAT)"
             strateji_metni = (
@@ -285,7 +277,6 @@ if st.button("🔄 Hibrid Analizi Başlat (Day + Swing Trade)", type="primary", 
         
         if rapor:
             df_res = pd.DataFrame(rapor)
-            # Sıralamayı 1. Gün beklentisi ve saatlik yön birleşimine göre yapıyoruz
             df_res = df_res.sort_values(by=['1. Gün Tahmin (%)', '1 Saatlik Yön (%)'], ascending=[False, False])
             st.session_state.pro_analiz_df = df_res
             df_res.to_csv(DATA_FILE, index=False)
@@ -304,7 +295,6 @@ if st.session_state.pro_analiz_df is not None:
 
     if gorunum_modu == "Mobil Kart Görünümü (Tavsiye)":
         for _, row in df_res.iterrows():
-            # Renklendirmeler
             t1_color = "green" if row['1 Saatlik Yön (%)'] > 0 else "red" if row['1 Saatlik Yön (%)'] < 0 else "neutral"
             d1_color = "green" if row['1. Gün Tahmin (%)'] > 0 else "red"
             d2_color = "green" if row['2. Gün Tahmin (%)'] > 0 else "red"
@@ -314,6 +304,7 @@ if st.session_state.pro_analiz_df is not None:
             elif "SAT" in row['Sinyal']: bg_color, text_color = '#f8d7da', '#721c24'
             else: bg_color, text_color = '#fff3cd', '#856404'
             
+            # BURADAKİ EKSİK PARAMETRE (unsafe_allow_html=True) EKLENDİ:
             st.markdown(f"""
             <div class="stock-card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
