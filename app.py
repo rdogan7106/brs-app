@@ -1,5 +1,3 @@
-
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -1287,10 +1285,13 @@ with tab_analiz:
                     m3.metric("2. Gün", f"%{row['2. Gün Tahmin (%)']:+.2f}")
                     m4.metric("3. Gün", f"%{row['3. Gün Tahmin (%)']:+.2f}")
 
-                    # 4) Strateji + alış planı tek satırda
-                    st.caption(
-                        f"🎯 {row['Strateji']} &nbsp;|&nbsp; "
-                        f"📅 Alış: {row['Yarınki Alış']} SEK"
+                    # 4) Strateji + alış tavsiyesi — okunabilir boyutta
+                    st.markdown(
+                        f"🎯 **Strateji:** {row['Strateji']}"
+                    )
+                    st.markdown(
+                        f"📅 **Alış Tavsiyesi:** Olası bir sabah esnemesinde "
+                        f"**{row['Yarınki Alış']} SEK** seviyesi alım için takip edilebilir."
                     )
                     st.markdown("---")
         else:
