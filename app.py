@@ -1101,7 +1101,7 @@ st.sidebar.caption("⚠️ Eğitim amaçlıdır. Yatırım tavsiyesi değildir."
 # ===================================================================
 # BAŞLIK
 # ===================================================================
-st.markdown("# ⚡ Avanza Pro Quant Panel")
+st.markdown("# ⚡ Borsa Panel")
 st.markdown("*15m Zirve Avcısı · ML Tahmin · Backtest · Risk Yönetimi · Sharpe Metrikleri*")
 st.markdown("---")
 
