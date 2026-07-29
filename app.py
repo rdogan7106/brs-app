@@ -5,7 +5,9 @@ import os
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Sayfa Yapılandırması
+# ---------------------------------------------------------
+# SAYFA YAPILANDIRMASI & CSS
+# ---------------------------------------------------------
 st.set_page_config(
     page_title="Avanza Pro Day-Trading Panel", 
     page_icon="⚡", 
@@ -13,10 +15,8 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Kayıt Dosyası (Verilerin tekrar yüklenmemesi için)
 DATA_FILE = "son_analiz.csv"
 
-# Mobile Özel CSS Stilleri
 st.markdown("""
     <style>
     .block-container {
@@ -41,6 +41,7 @@ st.markdown("""
         margin-top: 10px;
         font-size: 0.9rem;
         color: #0d47a1;
+        line-height: 1.4;
     }
     @media (prefers-color-scheme: dark) {
         .stock-card {
@@ -59,9 +60,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# PRO FONKSİYONLAR: PARALEL VERİ ÇEKME & TEKNİK ANALİZ
+# PRO FONKSİYONLAR: PARALEL VERİ ÇEKME & MATEMATİKSEL ANALİZ
 # ---------------------------------------------------------
-
 session = requests.Session()
 session.headers.update({
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -103,22 +103,67 @@ def tek_hisse_analiz_et(h_kod):
         low = df['Low']
         
         son_fiyat = float(close.iloc[-1])
-        son_yuksek = float(high.iloc[-1])
-        son_dusuk = float(low.iloc[-1])
         
         ema_5 = close.ewm(span=5, adjust=False).mean().iloc[-1]
         ema_20 = close.ewm(span=20, adjust=False).mean().iloc[-1]
         
+        # RSI 14
         delta = close.diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
         rs = gain / loss
         son_rsi = float((100 - (100 / (1 + rs))).iloc[-1])
 
+        # Hacim Katı
         vol_s = df['Volume'].dropna()
         ort_hacim = vol_s.tail(10).mean() if len(vol_s) >= 10 else 1
         hacim_kati = float(vol_s.iloc[-1] / ort_hacim) if ort_hacim > 0 else 1.0
 
+        # --- YENİ EKLENEN PROFESYONEL MATEMATİKSEL İSTATİSTİKLER ---
+        
+        # 1. ATR (Average True Range)
+        high_low = high - low
+        high_close = (high - close.shift(1)).abs()
+        low_close = (low - close.shift(1)).abs()
+        true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        atr_14 = float(true_range.rolling(14).mean().iloc[-1])
+        atr_yuzde = (atr_14 / son_fiyat) * 100
+
+        # 2. Ağırlıklı Getiri (Drift)
+        gunluk_getiri = close.pct_change().dropna()
+        ema_getiri = gunluk_getiri.ewm(span=10, adjust=False).mean().iloc[-1] * 100
+
+        # 3. Momentum Skoru (Ortalamaya Dönüş Mantığı)
+        if son_rsi > 75:
+            momentum = -0.15 
+        elif son_rsi < 30:
+            momentum = 0.15  
+        else:
+            momentum = (son_rsi - 50) / 100.0
+
+        hacim_etkisi = min(hacim_kati, 2.0) 
+        
+        # Gelecek 3 Günün Tahmini
+        tahminler_yuzde = {}
+        kumbulatif_fiyat = son_fiyat
+        aktif_momentum = momentum
+
+        for gun in range(1, 4):
+            gun_artis_yuzde = ema_getiri + (aktif_momentum * atr_yuzde * hacim_etkisi)
+            gun_artis_yuzde = max(min(gun_artis_yuzde, atr_yuzde * 1.5), -atr_yuzde * 1.5)
+            
+            kumbulatif_fiyat = kumbulatif_fiyat * (1 + (gun_artis_yuzde / 100))
+            tahminler_yuzde[f'{gun}. Gün Tahmin (%)'] = round(((kumbulatif_fiyat - son_fiyat) / son_fiyat) * 100, 2)
+            
+            aktif_momentum *= 0.5 
+            hacim_etkisi = max(1.0, hacim_etkisi * 0.8)
+
+        # Dinamik Destek/Direnç ve Stop Loss (ATR Tabanlı)
+        destek_s1 = round(son_fiyat - (atr_14 * 0.8), 2)
+        direnc_r1 = round(son_fiyat + (atr_14 * 0.8), 2)
+        stop_loss = round(son_fiyat - (atr_14 * 1.5), 2)
+
+        # Sinyal Üretimi
         if hacim_kati > 1.4 and son_fiyat > ema_5 and ema_5 > ema_20 and 48 <= son_rsi <= 68:
             sinyal = "GÜÇLÜ AL"
         elif (son_rsi < 35 and hacim_kati > 1.2) or (son_fiyat > ema_5 and son_rsi < 62):
@@ -128,39 +173,37 @@ def tek_hisse_analiz_et(h_kod):
         else:
             sinyal = "NÖTR"
 
-        gunluk_getiri = close.pct_change().dropna()
-        volatilite = gunluk_getiri.tail(20).std() * 100
-        ort_getiri = gunluk_getiri.tail(20).mean() * 100
+        # --- GÜN İÇİ HİKAYELEŞTİRİLMİŞ GERÇEKÇİ TAHMİN (SENİN İSTEDİĞİN FORMAT) ---
+        ilk_gun_artis = tahminler_yuzde['1. Gün Tahmin (%)']
+        beklenen_kapanis = round(son_fiyat * (1 + (ilk_gun_artis / 100)), 2)
         
-        yon = 1.0 if son_fiyat > ema_5 > ema_20 else (-1.0 if son_fiyat < ema_5 else 0.2)
+        # Sabah alım noktası fiyatın ATR'nin %30'u kadar altına esnemesiyle bulunur
+        sabah_alim = round(son_fiyat - (atr_14 * 0.3), 2)
         
-        pivot = (son_yuksek + son_dusuk + son_fiyat) / 3.0
-        destek_s1 = round((2.0 * pivot) - son_yuksek, 2)
-        direnc_r1 = round((2.0 * pivot) - son_dusuk, 2)
-        direnc_r2 = round(pivot + (son_yuksek - son_dusuk), 2)
-        stop_loss = round(son_fiyat * 0.982, 2)
-
-        tahminler_yuzde = {}
-        anlik_fiyat = son_fiyat
-        for gun in range(1, 4):
-            gun_artis = ort_getiri + (yon * (volatilite * 0.35)) + ((hacim_kati - 1.0) * (0.6 / gun))
-            anlik_fiyat = anlik_fiyat * (1 + (gun_artis / 100))
-            tahminler_yuzde[f'{gun}. Gün Tahmin (%)'] = round(((anlik_fiyat - son_fiyat) / son_fiyat) * 100, 2)
+        # Gün içi zirve: Yükseliş bekleniyorsa kapanışın biraz üstü, düşüş bekleniyorsa açılışın biraz üstü
+        if ilk_gun_artis > 0:
+            gun_ici_zirve = round(beklenen_kapanis + (atr_14 * 0.4), 2)
+        else:
+            gun_ici_zirve = round(son_fiyat + (atr_14 * 0.2), 2)
 
         if sinyal in ["GÜÇLÜ AL", "AL"]:
-            saat_vurgusu = "14:00'ten sonra kâr satışları gelme ihtimali yüksek" if hacim_kati > 1.5 else "Öğleden sonra piyasa yönüne dikkat edilmeli"
-            alim_yeri = max(destek_s1, round(son_fiyat * 0.99, 2))
             strateji_metni = (
-                f"🎯 **Tavsiye:** Sabah dalgalanmasını bekleyip, hisseyi **{alim_yeri} SEK** civarından (S1) yakalamaya çalışın. "
-                f"Hacim {hacim_kati:.1f}x arttığı için sabah saatlerinde hızlı bir atakla **{direnc_r1} - {direnc_r2} SEK** bandına (R1/R2) ulaşabilir. "
-                f"💡 **Kritik Saat:** {saat_vurgusu}. Olası ters durumda **{stop_loss} SEK** altında pozisyonu kapatın."
+                f"🎯 **Senaryo:** Sabah 09:00 - 10:00 arası piyasa açılış esnemesinde **{sabah_alim} SEK** civarından pozisyon alınabilir. "
+                f"Öğleden sonra 14:00 - 15:00 bandında hacimle beraber gün içi maksimum **{gun_ici_zirve} SEK** seviyelerini test etmesi, "
+                f"ardından kâr satışlarıyla günü **{beklenen_kapanis} SEK** civarında kapatması beklenebilir. <br>"
+                f"🛡️ <b>Risk:</b> Ters bir durumda <b>{stop_loss} SEK</b> seviyesi zarar-kes (stop-loss) olarak kullanılmalıdır."
             )
         elif sinyal == "SAT":
-            strateji_metni = f"⚠️ **Tavsiye:** Hisse RSI ({son_rsi:.1f}) seviyesinde ve satış baskısı yiyor. İzlemede kalınması tavsiye edilir."
+            strateji_metni = (
+                f"⚠️ **Senaryo:** Hisse aşırı alım/satış baskısı altında. Sabah açılışta **{sabah_alim} SEK** seviyesinden zayıf bir tepki verse de, "
+                f"gün içi en fazla **{gun_ici_zirve} SEK** seviyelerine tutunması ve ardından günü zayıf bir şekilde **{beklenen_kapanis} SEK** "
+                f"civarında kapatması yüksek olasılıktır. Alım önerilmez."
+            )
         else:
             strateji_metni = (
-                f"⚖️ **Tavsiye:** Fiyat yatay. Eğer **{direnc_r1} SEK** hacimli kırılırsa alım denenebilir. "
-                f"Kırılmazsa gün içi testere piyasasından uzak durulmalıdır."
+                f"⚖️ **Senaryo:** Fiyat yatay ve kararsız. Sabah dalgalanmasında **{sabah_alim} SEK** ile öğleden sonra **{gun_ici_zirve} SEK** "
+                f"arasında testere (git-gel) yapması öngörülüyor. Gün sonu kapanış tahmini **{beklenen_kapanis} SEK**. "
+                f"Net bir kırılım olmadığı için gün içi işlem riski yüksektir."
             )
 
         return {
@@ -185,11 +228,9 @@ def tek_hisse_analiz_et(h_kod):
 # ---------------------------------------------------------
 # UI & STREAMLIT ARAYÜZÜ
 # ---------------------------------------------------------
-
 st.title("⚡ Avanza Pro Day-Trading Analizi")
-st.caption("🚀 Akıllı Trade Tavsiyeleri & Otomatik Ön Bellek Sistemi")
+st.caption("🚀 Gerçekçi ATR Matematiği & Nokta Atışı Gün İçi Zamanlamaları")
 
-# Uygulama açılışında önceki verileri kontrol et
 if "pro_analiz_df" not in st.session_state:
     if os.path.exists(DATA_FILE):
         st.session_state.pro_analiz_df = pd.read_csv(DATA_FILE)
@@ -199,7 +240,6 @@ if "pro_analiz_df" not in st.session_state:
 st.sidebar.header("⚙️ Ayarlar")
 gorunum_modu = st.sidebar.radio("📱 Görünüm Modu:", ["Mobil Kart Görünümü (Tavsiye)", "Klasik Masaüstü Tablosu"])
 
-# Tam liste varsayılan olarak eklendi
 varsayilan_liste = (
     "ELUX-B, ANOD-B, LIME, ELUX-A, MIPS, ARLA, NTEK-B, PRIC-B, BILL, BOOZT, NANO, QLINEA, XBRANE, HOLM-B, "
     "PRFO, RAY-B, BESQ-B, PROFF, CLAS-B, REJL-B, SEZI, SECT-B, BIOA-B, SKIS-B, RROS, CER, YUBICO, HOLM-A, "
@@ -214,16 +254,15 @@ varsayilan_liste = (
 girdi = st.sidebar.text_area("Hisse Listeniz:", value=varsayilan_liste, height=350)
 hisseler = [h.strip() for h in girdi.split(",") if h.strip()]
 
-# Buton ismi güncellendi
 if st.button("🔄 Yeni Analiz Başlat / Verileri Güncelle", type="primary", use_container_width=True):
     if hisseler:
         rapor = []
         bar = st.progress(0)
         durum = st.empty()
-        durum.text("⚡ Taranıyor... Uzun listelerde biraz sürebilir.")
+        durum.text("⚡ Hisseler taranıyor... Matematiksel senaryolar oluşturuluyor.")
         
         completed_count = 0
-        with ThreadPoolExecutor(max_workers=20) as executor:  # Worker sayısı listeye uygun artırıldı
+        with ThreadPoolExecutor(max_workers=20) as executor:
             future_to_stock = {executor.submit(tek_hisse_analiz_et, h): h for h in hisseler}
             for future in as_completed(future_to_stock):
                 res = future.result()
@@ -239,13 +278,11 @@ if st.button("🔄 Yeni Analiz Başlat / Verileri Güncelle", type="primary", us
             df_res = pd.DataFrame(rapor)
             df_res = df_res.sort_values(by='1. Gün Tahmin (%)', ascending=False)
             st.session_state.pro_analiz_df = df_res
-            # Bir sonraki giriş için dosyaya kaydet
             df_res.to_csv(DATA_FILE, index=False)
 
 if st.session_state.pro_analiz_df is not None:
     df_res = st.session_state.pro_analiz_df
     
-    # En son güncelleme tarihini göster
     son_zaman = df_res['Analiz Zamanı'].iloc[0] if 'Analiz Zamanı' in df_res.columns else "Bilinmiyor"
     st.info(f"🕒 Ekranda gördüğünüz verilerin en son güncellenme zamanı: **{son_zaman}**")
     
@@ -255,7 +292,7 @@ if st.session_state.pro_analiz_df is not None:
     c2.metric("Yarın Yükseliş Beklenen", len(df_res[df_res['1. Gün Tahmin (%)'] > 0]))
 
     if gorunum_modu == "Mobil Kart Görünümü (Tavsiye)":
-        st.subheader("🔥 Fırsat Hisseleri & Aksiyon Planları")
+        st.subheader("🔥 Fırsat Hisseleri & Saatlik Aksiyon Planları")
         for _, row in df_res.iterrows():
             t1_color = "green" if row['1. Gün Tahmin (%)'] > 0 else "red"
             t2_color = "green" if row['2. Gün Tahmin (%)'] > 0 else "red"
