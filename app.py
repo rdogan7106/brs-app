@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
+import os
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -11,6 +12,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+# Kayıt Dosyası (Verilerin tekrar yüklenmemesi için)
+DATA_FILE = "son_analiz.csv"
 
 # Mobile Özel CSS Stilleri
 st.markdown("""
@@ -55,7 +59,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# PRO FONKSİYONLAR: PARALEL VERİ ÇEKME & TEKNİK ANALİZ ENGINE
+# PRO FONKSİYONLAR: PARALEL VERİ ÇEKME & TEKNİK ANALİZ
 # ---------------------------------------------------------
 
 session = requests.Session()
@@ -102,7 +106,6 @@ def tek_hisse_analiz_et(h_kod):
         son_yuksek = float(high.iloc[-1])
         son_dusuk = float(low.iloc[-1])
         
-        # PRO İNDİKATÖRLER
         ema_5 = close.ewm(span=5, adjust=False).mean().iloc[-1]
         ema_20 = close.ewm(span=20, adjust=False).mean().iloc[-1]
         
@@ -131,42 +134,33 @@ def tek_hisse_analiz_et(h_kod):
         
         yon = 1.0 if son_fiyat > ema_5 > ema_20 else (-1.0 if son_fiyat < ema_5 else 0.2)
         
-        # Pivot & Seviyeler
         pivot = (son_yuksek + son_dusuk + son_fiyat) / 3.0
         destek_s1 = round((2.0 * pivot) - son_yuksek, 2)
         direnc_r1 = round((2.0 * pivot) - son_dusuk, 2)
         direnc_r2 = round(pivot + (son_yuksek - son_dusuk), 2)
         stop_loss = round(son_fiyat * 0.982, 2)
 
-        # 3 GÜNLÜK TAHMİN (Geri Eklendi)
         tahminler_yuzde = {}
         anlik_fiyat = son_fiyat
         for gun in range(1, 4):
-            # İvme ve hacim faktörünü günlere yayıyoruz
             gun_artis = ort_getiri + (yon * (volatilite * 0.35)) + ((hacim_kati - 1.0) * (0.6 / gun))
             anlik_fiyat = anlik_fiyat * (1 + (gun_artis / 100))
             tahminler_yuzde[f'{gun}. Gün Tahmin (%)'] = round(((anlik_fiyat - son_fiyat) / son_fiyat) * 100, 2)
 
-        # YAPAY ZEKA STİLİ AL-SAT STRATEJİ METNİ
         if sinyal in ["GÜÇLÜ AL", "AL"]:
-            saat_vurgusu = "14:00'ten sonra kâr satışları (afternoon fade) gelme ihtimali yüksek" if hacim_kati > 1.5 else "Öğleden sonra piyasa yönüne dikkat edilmeli"
+            saat_vurgusu = "14:00'ten sonra kâr satışları gelme ihtimali yüksek" if hacim_kati > 1.5 else "Öğleden sonra piyasa yönüne dikkat edilmeli"
             alim_yeri = max(destek_s1, round(son_fiyat * 0.99, 2))
-            
             strateji_metni = (
-                f"🎯 **Tavsiye:** Sabah seans açılışında muhtemel dalgalanmayı bekleyip, hisseyi **{alim_yeri} SEK** civarından (Destek/S1) yakalamaya çalışın. "
+                f"🎯 **Tavsiye:** Sabah dalgalanmasını bekleyip, hisseyi **{alim_yeri} SEK** civarından (S1) yakalamaya çalışın. "
                 f"Hacim {hacim_kati:.1f}x arttığı için sabah saatlerinde hızlı bir atakla **{direnc_r1} - {direnc_r2} SEK** bandına (R1/R2) ulaşabilir. "
-                f"💡 **Kritik Saat:** {saat_vurgusu}, bu yüzden hedef fiyata ulaştığında kârı realize edip çıkmak en güvenlisidir. "
-                f"Olası ters durumda **{stop_loss} SEK** altında kesinlikle pozisyonu kapatın."
+                f"💡 **Kritik Saat:** {saat_vurgusu}. Olası ters durumda **{stop_loss} SEK** altında pozisyonu kapatın."
             )
         elif sinyal == "SAT":
-            strateji_metni = (
-                f"⚠️ **Tavsiye:** Hisse RSI ({son_rsi:.1f}) seviyesinde ve satış baskısı yiyor. "
-                f"Gün içi alım (long) yapmak risklidir. İzlemede kalınması tavsiye edilir."
-            )
+            strateji_metni = f"⚠️ **Tavsiye:** Hisse RSI ({son_rsi:.1f}) seviyesinde ve satış baskısı yiyor. İzlemede kalınması tavsiye edilir."
         else:
             strateji_metni = (
-                f"⚖️ **Tavsiye:** Fiyat yatay seyrediyor. Eğer **{direnc_r1} SEK** hacimli kırılırsa alım denenebilir. "
-                f"Kırılmazsa gün içi testere piyasasına kurban olmamak için işlemden uzak durulmalıdır."
+                f"⚖️ **Tavsiye:** Fiyat yatay. Eğer **{direnc_r1} SEK** hacimli kırılırsa alım denenebilir. "
+                f"Kırılmazsa gün içi testere piyasasından uzak durulmalıdır."
             )
 
         return {
@@ -183,7 +177,7 @@ def tek_hisse_analiz_et(h_kod):
             'Direnç (R1)': direnc_r1,
             'Stop-Loss': stop_loss,
             'Strateji': strateji_metni,
-            'Analiz Tarihi': datetime.now().strftime("%Y-%m-%d")
+            'Analiz Zamanı': datetime.now().strftime("%Y-%m-%d %H:%M")
         }
     except Exception:
         return None
@@ -193,11 +187,19 @@ def tek_hisse_analiz_et(h_kod):
 # ---------------------------------------------------------
 
 st.title("⚡ Avanza Pro Day-Trading Analizi")
-st.caption("🚀 Çoklu İşlemci + 3 Günlük Projeksiyon + Akıllı Trade Tavsiyeleri")
+st.caption("🚀 Akıllı Trade Tavsiyeleri & Otomatik Ön Bellek Sistemi")
+
+# Uygulama açılışında önceki verileri kontrol et
+if "pro_analiz_df" not in st.session_state:
+    if os.path.exists(DATA_FILE):
+        st.session_state.pro_analiz_df = pd.read_csv(DATA_FILE)
+    else:
+        st.session_state.pro_analiz_df = None
 
 st.sidebar.header("⚙️ Ayarlar")
 gorunum_modu = st.sidebar.radio("📱 Görünüm Modu:", ["Mobil Kart Görünümü (Tavsiye)", "Klasik Masaüstü Tablosu"])
 
+# Tam liste varsayılan olarak eklendi
 varsayilan_liste = (
     "ELUX-B, ANOD-B, LIME, ELUX-A, MIPS, ARLA, NTEK-B, PRIC-B, BILL, BOOZT, NANO, QLINEA, XBRANE, HOLM-B, "
     "PRFO, RAY-B, BESQ-B, PROFF, CLAS-B, REJL-B, SEZI, SECT-B, BIOA-B, SKIS-B, RROS, CER, YUBICO, HOLM-A, "
@@ -209,21 +211,19 @@ varsayilan_liste = (
     "ATCO-A, ENGCON-B, EPI-B, ALFA, ATCO-B, BUFAB, AQ, DYNA, MEKE-B, PREC, IRLAB-A, MYCR, DEDI-B, WISE"
 )
 
-girdi = st.sidebar.text_area("Hisse Listeniz (Örnek Kısa Liste):", value=varsayilan_liste, height=120)
+girdi = st.sidebar.text_area("Hisse Listeniz:", value=varsayilan_liste, height=350)
 hisseler = [h.strip() for h in girdi.split(",") if h.strip()]
 
-if "pro_analiz_df" not in st.session_state:
-    st.session_state.pro_analiz_df = None
-
-if st.button("🚀 Hızlı Analizi Başlat (Pro Engine)", type="primary", use_container_width=True):
+# Buton ismi güncellendi
+if st.button("🔄 Yeni Analiz Başlat / Verileri Güncelle", type="primary", use_container_width=True):
     if hisseler:
         rapor = []
         bar = st.progress(0)
         durum = st.empty()
-        durum.text("⚡ Paralel taranıyor... Lütfen bekleyin.")
+        durum.text("⚡ Taranıyor... Uzun listelerde biraz sürebilir.")
         
         completed_count = 0
-        with ThreadPoolExecutor(max_workers=15) as executor:
+        with ThreadPoolExecutor(max_workers=20) as executor:  # Worker sayısı listeye uygun artırıldı
             future_to_stock = {executor.submit(tek_hisse_analiz_et, h): h for h in hisseler}
             for future in as_completed(future_to_stock):
                 res = future.result()
@@ -239,13 +239,19 @@ if st.button("🚀 Hızlı Analizi Başlat (Pro Engine)", type="primary", use_co
             df_res = pd.DataFrame(rapor)
             df_res = df_res.sort_values(by='1. Gün Tahmin (%)', ascending=False)
             st.session_state.pro_analiz_df = df_res
+            # Bir sonraki giriş için dosyaya kaydet
+            df_res.to_csv(DATA_FILE, index=False)
 
 if st.session_state.pro_analiz_df is not None:
     df_res = st.session_state.pro_analiz_df
     
+    # En son güncelleme tarihini göster
+    son_zaman = df_res['Analiz Zamanı'].iloc[0] if 'Analiz Zamanı' in df_res.columns else "Bilinmiyor"
+    st.info(f"🕒 Ekranda gördüğünüz verilerin en son güncellenme zamanı: **{son_zaman}**")
+    
     st.markdown("---")
     c1, c2 = st.columns(2)
-    c1.metric("Analiz Edilen Hisse", len(df_res))
+    c1.metric("Başarıyla Analiz Edilen", len(df_res))
     c2.metric("Yarın Yükseliş Beklenen", len(df_res[df_res['1. Gün Tahmin (%)'] > 0]))
 
     if gorunum_modu == "Mobil Kart Görünümü (Tavsiye)":
@@ -277,5 +283,4 @@ if st.session_state.pro_analiz_df is not None:
             """, unsafe_allow_html=True)
             
     else:
-        # Tablo görünümünde karmaşık metni gizleyip temel verileri gösteriyoruz
         st.dataframe(df_res.drop(columns=['Strateji']), use_container_width=True)
