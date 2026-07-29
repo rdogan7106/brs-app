@@ -1,3 +1,5 @@
+
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -41,7 +43,7 @@ except ImportError:
 # SAYFA YAPILANDIRMASI & MODERN CSS
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Borsa Panel",
+    page_title="Avanza Pro Quant Panel",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -104,25 +106,33 @@ st.markdown("""
         box-shadow: 0 -2px 8px rgba(0, 212, 255, 0.15);
     }
 
-    /* Metric kartları */
+    /* Metric kartları — kompakt */
     [data-testid="stMetric"] {
         background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        padding: 1rem 1.2rem;
-        border-radius: 0.8rem;
-        border-left: 3px solid #00d4ff;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        padding: 0.4rem 0.6rem;
+        border-radius: 0.5rem;
+        border-left: 2px solid #00d4ff;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.2);
     }
     [data-testid="stMetric"] label {
         color: #8ab4f8 !important;
-        font-size: 0.78rem !important;
+        font-size: 0.65rem !important;
         font-weight: 500;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.3px;
     }
     [data-testid="stMetric"] [data-testid="stMetricValue"] {
         color: #ffffff !important;
-        font-size: 1.5rem !important;
+        font-size: 1rem !important;
         font-weight: 700;
+    }
+    [data-testid="stMetric"] [data-testid="stMetricDelta"] {
+        font-size: 0.7rem !important;
+    }
+
+    /* Hisse kartı */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        gap: 0.3rem;
     }
 
     /* Buton stilleri */
@@ -191,6 +201,19 @@ st.markdown("""
         color: #666 !important;
         font-size: 0.82rem !important;
     }
+
+    /* Sinyal rozeti */
+    .signal-badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+    .signal-buy { background: #1b4332; color: #52d681; border: 1px solid #52d681; }
+    .signal-sell { background: #4a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+    .signal-hold { background: #3d3a0a; color: #ffd93d; border: 1px solid #ffd93d; }
 
     /* Progress bar */
     .stProgress > div > div {
@@ -1073,6 +1096,40 @@ varsayilan_liste = (
 girdi = st.sidebar.text_area("📋 Hisse Listeniz:", value=varsayilan_liste, height=300)
 hisseler = [h.strip() for h in girdi.split(",") if h.strip()]
 
+# Hisse adlarını paralel çek ve cache'le
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_ticker_name_map(ticker_tuple):
+    """Yahoo Finance'den hisse adlarını paralel olarak çeker."""
+    tickers = list(ticker_tuple)
+    name_map = {}
+    def _fetch(t):
+        h_clean = str(t).strip().upper()
+        h_yf = h_clean if h_clean.endswith(".ST") else f"{h_clean}.ST"
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{h_yf}?range=1d&interval=1d"
+        try:
+            res = session.get(url, timeout=5)
+            if res.status_code == 200:
+                meta = res.json()['chart']['result'][0].get('meta', {})
+                name = meta.get('shortName') or meta.get('longName') or h_clean
+                return t, name
+        except Exception:
+            pass
+        return t, h_clean
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        for future in as_completed([executor.submit(_fetch, t) for t in tickers]):
+            t, name = future.result()
+            name_map[t] = name
+    return name_map
+
+ticker_names = {}
+if hisseler:
+    with st.spinner("Hisse adları yükleniyor..."):
+        ticker_names = get_ticker_name_map(tuple(hisseler))
+
+def format_hisse(ticker):
+    """Dropdown'da tam şirket adını göster, ticker'ı değer olarak kullan."""
+    return ticker_names.get(ticker, ticker)
+
 # Hisse sayacı
 st.sidebar.caption(f"📊 Listedeki hisse sayısı: **{len(hisseler)}**")
 
@@ -1101,7 +1158,7 @@ st.sidebar.caption("⚠️ Eğitim amaçlıdır. Yatırım tavsiyesi değildir."
 # ===================================================================
 # BAŞLIK
 # ===================================================================
-st.markdown("# ⚡ Borsa Panel")
+st.markdown("# ⚡ Avanza Pro Quant Panel")
 st.markdown("*15m Zirve Avcısı · ML Tahmin · Backtest · Risk Yönetimi · Sharpe Metrikleri*")
 st.markdown("---")
 
@@ -1194,39 +1251,46 @@ with tab_analiz:
             st.markdown("### 🔥 Canlı Aksiyon Planları & Çoklu Tahminler")
             for _, row in df_res.iterrows():
                 with st.container():
-                    col_h, col_s = st.columns([3, 1])
-                    with col_h:
-                        st.markdown(
-                            f"### {row['Şirket Adı']} "
-                            f"<span style='font-size:0.8rem; color:gray;'>({row['Kod']})</span>",
-                            unsafe_allow_html=True
-                        )
-                    with col_s:
-                        if "AL" in row['Sinyal']:
-                            st.success(row['Sinyal'])
-                        elif "SAT" in row['Sinyal']:
-                            st.error(row['Sinyal'])
-                        else:
-                            st.warning(row['Sinyal'])
-
-                    st.write(
-                        f"**Fiyat:** {row['Son Fiyat (SEK)']} SEK | "
-                        f"**RSI(15m):** {row['RSI (15m)']} | "
-                        f"**VWAP:** {row['VWAP']} SEK | "
-                        f"**Pik Hedefi:** {row['Potansiyel Pik']} SEK"
+                    # 1) Sinyal/Tavsiye en üstte — kompakt rozet
+                    if "AL" in row['Sinyal']:
+                        badge_cls = "signal-buy"
+                        badge_emoji = "✅"
+                    elif "SAT" in row['Sinyal']:
+                        badge_cls = "signal-sell"
+                        badge_emoji = "❌"
+                    else:
+                        badge_cls = "signal-hold"
+                        badge_emoji = "⏸️"
+                    st.markdown(
+                        f"<span class='signal-badge {badge_cls}'>"
+                        f"{badge_emoji} {row['Sinyal']}</span>",
+                        unsafe_allow_html=True
                     )
 
+                    # 2) Şirket adı + fiyat bilgisi tek satırda
+                    st.markdown(
+                        f"**{row['Şirket Adı']}** "
+                        f"<span style='font-size:0.75rem; color:gray;'>({row['Kod']})</span> &nbsp;"
+                        f"<span style='font-size:0.8rem;'>"
+                        f"Fiyat: {row['Son Fiyat (SEK)']} SEK | "
+                        f"RSI: {row['RSI (15m)']} | "
+                        f"VWAP: {row['VWAP']} SEK | "
+                        f"Pik: {row['Potansiyel Pik']} SEK"
+                        f"</span>",
+                        unsafe_allow_html=True
+                    )
+
+                    # 3) Tahmin değerleri altta — kompakt metric'ler
                     m1, m2, m3, m4 = st.columns(4)
-                    m1.metric("1 Saatlik Yön", f"%{row['1 Saatlik Yön (%)']:+.2f}")
+                    m1.metric("1 Saat", f"%{row['1 Saatlik Yön (%)']:+.2f}")
                     m2.metric("1. Gün", f"%{row['1. Gün Tahmin (%)']:+.2f}")
                     m3.metric("2. Gün", f"%{row['2. Gün Tahmin (%)']:+.2f}")
                     m4.metric("3. Gün", f"%{row['3. Gün Tahmin (%)']:+.2f}")
 
-                    st.info(f"🎯 **Strateji:** {row['Strateji']}")
-                    st.success(
-                        f"📅 **Yarınki Alış Planı:** "
-                        f"Olası bir sabah esnemesinde **{row['Yarınki Alış']} SEK** "
-                        f"seviyesi alım için takip edilebilir."
+                    # 4) Strateji + alış planı tek satırda
+                    st.caption(
+                        f"🎯 {row['Strateji']} &nbsp;|&nbsp; "
+                        f"📅 Alış: {row['Yarınki Alış']} SEK"
                     )
                     st.markdown("---")
         else:
@@ -1246,6 +1310,7 @@ with tab_backtest:
             "Hisse Seç:",
             options=hisseler if hisseler else ["ELUX-B"],
             index=0,
+            format_func=format_hisse,
             key="bt_hisse"
         )
     with col_bt2:
@@ -1371,6 +1436,7 @@ with tab_ml:
                 "Hisse Seç:",
                 options=hisseler if hisseler else ["ELUX-B"],
                 index=0,
+                format_func=format_hisse,
                 key="ml_hisse"
             )
         with col_ml2:
@@ -1479,6 +1545,7 @@ with tab_risk:
             "Hisse Seç:",
             options=hisseler if hisseler else ["ELUX-B"],
             index=0,
+            format_func=format_hisse,
             key="rk_hisse"
         )
     with col_rk_fetch:
