@@ -56,11 +56,12 @@ st.markdown("""
     }
     .badge-green { color: #2e7d32; font-weight: bold; }
     .badge-red { color: #c62828; font-weight: bold; }
+    .badge-neutral { color: #f57f17; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# PRO FONKSİYONLAR: PARALEL VERİ ÇEKME & MATEMATİKSEL ANALİZ
+# PRO FONKSİYONLAR: GÜN İÇİ VERİ (15 DAKİKALIK) & ANALİZ
 # ---------------------------------------------------------
 session = requests.Session()
 session.headers.update({
@@ -73,7 +74,7 @@ def tek_hisse_analiz_et(h_kod):
     h_clean = str(h_kod).strip().upper()
     h_yf = h_clean if h_clean.endswith(".ST") else f"{h_clean}.ST"
     
-    # DİKKAT: 1d (günlük) yerine 5d (5 günlük) ve 15m (15 dakikalık) gün içi veri çekiyoruz
+    # DİKKAT: 1d yerine 15m (15 dakikalık) veri çekiyoruz
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{h_yf}?range=5d&interval=15m"
     
     try:
@@ -117,7 +118,7 @@ def tek_hisse_analiz_et(h_kod):
         rs = gain / loss
         son_rsi = float((100 - (100 / (1 + rs))).iloc[-1])
 
-        # BOLLINGER BANTLARI (Zirve / Pik noktasını bulmak için en iyi araç)
+        # BOLLINGER BANTLARI (Zirve / Pik noktasını bulmak için)
         sma_20 = close.rolling(window=20).mean()
         std_20 = close.rolling(window=20).std()
         upper_band = (sma_20 + (std_20 * 2)).iloc[-1]
@@ -140,25 +141,24 @@ def tek_hisse_analiz_et(h_kod):
         atr_14 = float(true_range.rolling(14).mean().iloc[-1])
         
         # Dinamik Zirve ve Stop-Loss Hesaplama
-        # İzleyen Stop: Fiyat VWAP'ın altındaysa risklidir. 
         stop_loss = round(son_vwap - (atr_14 * 1.5), 2) if son_fiyat > son_vwap else round(son_fiyat - (atr_14 * 2), 2)
         potansiyel_pik = round(upper_band + (atr_14 * 0.5), 2)
 
-        # GÜN İÇİ PİK VE SİNYAL ÜRETİMİ (DAY TRADING MANTIĞI)
+        # GÜN İÇİ PİK VE SİNYAL ÜRETİMİ
         if son_fiyat >= upper_band and son_rsi > 70:
-            sinyal = "PİK YAPTI - KÂR AL (SAT)"
+            sinyal = "PİK YAPTI (SAT)"
             strateji_metni = (
-                f"🚨 **DİKKAT (ZİRVE):** Fiyat Bollinger üst bandını ({round(upper_band, 2)}) aştı ve RSI aşırı alımda ({round(son_rsi, 1)}). "
+                f"🚨 **DİKKAT (ZİRVE):** Fiyat Bollinger üst bandını aştı ve RSI aşırı alımda ({round(son_rsi, 1)}). "
                 f"Hisse şu an gün içi **PİK (Tepe)** noktasında olabilir. Geri çekilme riski çok yüksek. "
-                f"Kârı cebe yakışır prensibiyle **{son_fiyat} SEK** civarından satış (exit) planlanmalıdır."
+                f"Kârı cebe yakışır prensibiyle **{son_fiyat} SEK** civarından satış planlanmalıdır."
             )
-            tahmin_yonu = -1 # Düşüş bekleniyor
+            tahmin_yonu = -1.0 
             
         elif hacim_kati > 1.5 and son_fiyat > son_vwap and ema_9 > ema_21 and 40 <= son_rsi <= 65:
             sinyal = "GÜÇLÜ AL & TUT"
             strateji_metni = (
-                f"🔥 **MOMENTUM YÜKSEK:** Hacim {round(hacim_kati, 1)}x arttı ve fiyat VWAP'ın ({round(son_vwap, 2)}) üzerinde tutunuyor. "
-                f"Yükseliş trendi güçlü. Satış için acele etme. İlk hedef ve potansiyel gün içi zirve (pik) noktası **{potansiyel_pik} SEK** seviyesidir. "
+                f"🔥 **MOMENTUM YÜKSEK:** Hacim {round(hacim_kati, 1)}x arttı ve fiyat VWAP'ın ({round(son_vwap, 2)}) üzerinde. "
+                f"Yükseliş trendi güçlü. Satış için acele etme. İlk potansiyel gün içi zirve (pik) noktası **{potansiyel_pik} SEK** seviyesidir. "
                 f"🛡️ **İzleyen Stop:** {stop_loss} SEK altında saatlik kapanış gelirse pozisyonu kapat."
             )
             tahmin_yonu = 1.5
@@ -167,27 +167,26 @@ def tek_hisse_analiz_et(h_kod):
             sinyal = "DİPTEN TEPKİ (AL)"
             strateji_metni = (
                 f"🎯 **DİP FIRSATI:** Hisse gün içi aşırı satıldı (RSI: {round(son_rsi, 1)}). "
-                f"Bollinger alt bandından ({round(lower_band, 2)}) tepki alımları gelebilir. "
-                f"Kısa vadeli (scalping) bir işlemle **{round(son_vwap, 2)} SEK** seviyesine kadar bir sıçrama (bounce) beklenebilir. Stop: {stop_loss} SEK."
+                f"Kısa vadeli (scalping) bir işlemle **{round(son_vwap, 2)} SEK** seviyesine kadar bir sıçrama beklenebilir. Stop: {stop_loss} SEK."
             )
-            tahmin_yonu = 1
+            tahmin_yonu = 1.0
             
         else:
             sinyal = "NÖTR (İZLE)"
             strateji_metni = (
                 f"⚖️ **YATAY SEYİR:** Fiyat ortalamalar arasında sıkışmış durumda. Net bir trend yok. "
-                f"Pik tahmini zor ancak yukarı kırılımda {round(upper_band, 2)} SEK, aşağı kırılımda {round(lower_band, 2)} SEK hedeflenebilir. İşlem için hacmin artmasını bekle."
+                f"Yukarı kırılımda {round(upper_band, 2)} SEK, aşağı kırılımda {round(lower_band, 2)} SEK hedeflenebilir."
             )
-            tahmin_yonu = 0
+            tahmin_yonu = 0.0
 
-        # UI için Tahmin yüzdelerini sembolik hesaplayalım (Gelecek 1-2 saatlik beklenti)
+        # UI için Saatlik Yön Tahmini (Sembolik yüzde)
         beklenen_getiri = round((atr_14 / son_fiyat) * 100 * tahmin_yonu, 2)
 
         return {
             'Şirket Adı': sirket_adi,
             'Kod': h_clean,
             'Son Fiyat (SEK)': round(son_fiyat, 2),
-            '1 Saatlik Yön (%)': beklenen_getiri, # Eskiden 1. Gün Tahmindi, artık 1 saat
+            '1 Saatlik Yön (%)': beklenen_getiri,
             'Sinyal': sinyal,
             'RSI (14)': round(son_rsi, 1),
             'Hacim Katı': round(hacim_kati, 1),
@@ -204,7 +203,7 @@ def tek_hisse_analiz_et(h_kod):
 # UI & STREAMLIT ARAYÜZÜ
 # ---------------------------------------------------------
 st.title("⚡ Avanza Pro Day-Trading Analizi")
-st.caption("🚀 Gerçekçi ATR Matematiği & Nokta Atışı Gün İçi Zamanlamaları")
+st.caption("🚀 Gerçekçi 15-Dk ATR, VWAP Matematiği & Gün İçi Pik Zamanlamaları")
 
 if "pro_analiz_df" not in st.session_state:
     if os.path.exists(DATA_FILE):
@@ -229,12 +228,12 @@ varsayilan_liste = (
 girdi = st.sidebar.text_area("Hisse Listeniz:", value=varsayilan_liste, height=350)
 hisseler = [h.strip() for h in girdi.split(",") if h.strip()]
 
-if st.button("🔄 Yeni Analiz Başlat / Verileri Güncelle", type="primary", use_container_width=True):
+if st.button("🔄 Yeni Analiz Başlat / Gün İçi Verileri Çek", type="primary", use_container_width=True):
     if hisseler:
         rapor = []
         bar = st.progress(0)
         durum = st.empty()
-        durum.text("⚡ Hisseler taranıyor... Matematiksel senaryolar oluşturuluyor.")
+        durum.text("⚡ Hisseler taranıyor... 15 dakikalık grafikler ve VWAP hesaplanıyor.")
         
         completed_count = 0
         with ThreadPoolExecutor(max_workers=20) as executor:
@@ -251,7 +250,8 @@ if st.button("🔄 Yeni Analiz Başlat / Verileri Güncelle", type="primary", us
         
         if rapor:
             df_res = pd.DataFrame(rapor)
-            df_res = df_res.sort_values(by='1. Gün Tahmin (%)', ascending=False)
+            # Sıralamayı artık 1 saatlik ivmeye göre yapıyoruz
+            df_res = df_res.sort_values(by='1 Saatlik Yön (%)', ascending=False)
             st.session_state.pro_analiz_df = df_res
             df_res.to_csv(DATA_FILE, index=False)
 
@@ -264,29 +264,42 @@ if st.session_state.pro_analiz_df is not None:
     st.markdown("---")
     c1, c2 = st.columns(2)
     c1.metric("Başarıyla Analiz Edilen", len(df_res))
-    c2.metric("Yarın Yükseliş Beklenen", len(df_res[df_res['1. Gün Tahmin (%)'] > 0]))
+    # Metriği artık saatlik yükseliş beklentisine göre veriyoruz
+    c2.metric("Saatlik Yükseliş Beklenen", len(df_res[df_res['1 Saatlik Yön (%)'] > 0]))
 
     if gorunum_modu == "Mobil Kart Görünümü (Tavsiye)":
-        st.subheader("🔥 Fırsat Hisseleri & Saatlik Aksiyon Planları")
+        st.subheader("🔥 Canlı Aksiyon Planları & Gün İçi Tepe Noktaları")
         for _, row in df_res.iterrows():
-            t1_color = "green" if row['1. Gün Tahmin (%)'] > 0 else "red"
-            t2_color = "green" if row['2. Gün Tahmin (%)'] > 0 else "red"
-            t3_color = "green" if row['3. Gün Tahmin (%)'] > 0 else "red"
+            # Yön Rengi
+            if row['1 Saatlik Yön (%)'] > 0:
+                t1_color = "green"
+            elif row['1 Saatlik Yön (%)'] < 0:
+                t1_color = "red"
+            else:
+                t1_color = "neutral"
+
+            # Sinyal Renkleri
+            if "AL" in row['Sinyal']:
+                bg_color, text_color = '#d4edda', '#155724'
+            elif "SAT" in row['Sinyal']:
+                bg_color, text_color = '#f8d7da', '#721c24'
+            else:
+                bg_color, text_color = '#fff3cd', '#856404'
             
             st.markdown(f"""
             <div class="stock-card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <h4 style="margin:0; font-size: 1.05rem;">{row['Şirket Adı']} <span style="font-size:0.85rem; color:#6c757d;">({row['Kod']})</span></h4>
-                    <span style="background-color: {'#d4edda' if row['Sinyal'] in ['AL', 'GÜÇLÜ AL'] else '#f8d7da'}; color: {'#155724' if row['Sinyal'] in ['AL', 'GÜÇLÜ AL'] else '#721c24'}; padding: 3px 8px; border-radius: 5px; font-weight: bold; font-size: 0.8rem;">{row['Sinyal']}</span>
+                    <span style="background-color: {bg_color}; color: {text_color}; padding: 3px 8px; border-radius: 5px; font-weight: bold; font-size: 0.8rem;">{row['Sinyal']}</span>
                 </div>
                 <div style="margin-top: 8px; font-size: 0.9rem;">
-                    <b>Fiyat:</b> {row['Son Fiyat (SEK)']} SEK | <b>RSI:</b> {row['RSI (14)']} | <b>Hacim:</b> {row['Hacim Katı']}x
+                    <b>Fiyat:</b> {row['Son Fiyat (SEK)']} SEK | <b>RSI (15m):</b> {row['RSI (14)']} | <b>Hacim İvmesi:</b> {row['Hacim Katı']}x
                 </div>
                 <hr style="margin: 8px 0;">
                 <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
-                    <span><b>Yarın:</b> <span class="badge-{t1_color}">%{row['1. Gün Tahmin (%)']:+.2f}</span></span>
-                    <span><b>2. Gün:</b> <span class="badge-{t2_color}">%{row['2. Gün Tahmin (%)']:+.2f}</span></span>
-                    <span><b>3. Gün:</b> <span class="badge-{t3_color}">%{row['3. Gün Tahmin (%)']:+.2f}</span></span>
+                    <span><b>1 Saatlik Yön:</b> <span class="badge-{t1_color}">%{row['1 Saatlik Yön (%)']:+.2f}</span></span>
+                    <span><b>VWAP:</b> <span>{row['VWAP']} SEK</span></span>
+                    <span><b>Potansiyel Pik:</b> <span class="badge-green">{row['Potansiyel Pik']} SEK</span></span>
                 </div>
                 <div class="strategy-box">
                     {row['Strateji']}
