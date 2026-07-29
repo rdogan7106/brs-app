@@ -72,7 +72,9 @@ session.headers.update({
 def tek_hisse_analiz_et(h_kod):
     h_clean = str(h_kod).strip().upper()
     h_yf = h_clean if h_clean.endswith(".ST") else f"{h_clean}.ST"
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{h_yf}?range=6mo&interval=1d"
+    
+    # DİKKAT: 1d (günlük) yerine 5d (5 günlük) ve 15m (15 dakikalık) gün içi veri çekiyoruz
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{h_yf}?range=5d&interval=15m"
     
     try:
         res = session.get(url, timeout=6)
@@ -104,120 +106,93 @@ def tek_hisse_analiz_et(h_kod):
         
         son_fiyat = float(close.iloc[-1])
         
-        ema_5 = close.ewm(span=5, adjust=False).mean().iloc[-1]
-        ema_20 = close.ewm(span=20, adjust=False).mean().iloc[-1]
+        # Gün içi kısa periyotlu EMA'lar (Trend takibi için)
+        ema_9 = close.ewm(span=9, adjust=False).mean().iloc[-1]
+        ema_21 = close.ewm(span=21, adjust=False).mean().iloc[-1]
         
-        # RSI 14
+        # RSI 14 (15 dakikalık periyotta)
         delta = close.diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
         rs = gain / loss
         son_rsi = float((100 - (100 / (1 + rs))).iloc[-1])
 
-        # Hacim Katı
+        # BOLLINGER BANTLARI (Zirve / Pik noktasını bulmak için en iyi araç)
+        sma_20 = close.rolling(window=20).mean()
+        std_20 = close.rolling(window=20).std()
+        upper_band = (sma_20 + (std_20 * 2)).iloc[-1]
+        lower_band = (sma_20 - (std_20 * 2)).iloc[-1]
+
+        # VWAP Yaklaşımı (Hacim Ağırlıklı Hareketli Ortalama)
+        vwap = (df['Close'] * df['Volume']).rolling(14).sum() / df['Volume'].rolling(14).sum()
+        son_vwap = vwap.iloc[-1]
+
+        # Hacim Skoru (Son 15 dk vs Son 3 saatin ortalaması)
         vol_s = df['Volume'].dropna()
-        ort_hacim = vol_s.tail(10).mean() if len(vol_s) >= 10 else 1
+        ort_hacim = vol_s.tail(12).mean() if len(vol_s) >= 12 else 1
         hacim_kati = float(vol_s.iloc[-1] / ort_hacim) if ort_hacim > 0 else 1.0
 
-        # --- YENİ EKLENEN PROFESYONEL MATEMATİKSEL İSTATİSTİKLER ---
-        
-        # 1. ATR (Average True Range)
+        # ATR (15 dakikalık oynaklık)
         high_low = high - low
         high_close = (high - close.shift(1)).abs()
         low_close = (low - close.shift(1)).abs()
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         atr_14 = float(true_range.rolling(14).mean().iloc[-1])
-        atr_yuzde = (atr_14 / son_fiyat) * 100
-
-        # 2. Ağırlıklı Getiri (Drift)
-        gunluk_getiri = close.pct_change().dropna()
-        ema_getiri = gunluk_getiri.ewm(span=10, adjust=False).mean().iloc[-1] * 100
-
-        # 3. Momentum Skoru (Ortalamaya Dönüş Mantığı)
-        if son_rsi > 75:
-            momentum = -0.15 
-        elif son_rsi < 30:
-            momentum = 0.15  
-        else:
-            momentum = (son_rsi - 50) / 100.0
-
-        hacim_etkisi = min(hacim_kati, 2.0) 
         
-        # Gelecek 3 Günün Tahmini
-        tahminler_yuzde = {}
-        kumbulatif_fiyat = son_fiyat
-        aktif_momentum = momentum
+        # Dinamik Zirve ve Stop-Loss Hesaplama
+        # İzleyen Stop: Fiyat VWAP'ın altındaysa risklidir. 
+        stop_loss = round(son_vwap - (atr_14 * 1.5), 2) if son_fiyat > son_vwap else round(son_fiyat - (atr_14 * 2), 2)
+        potansiyel_pik = round(upper_band + (atr_14 * 0.5), 2)
 
-        for gun in range(1, 4):
-            gun_artis_yuzde = ema_getiri + (aktif_momentum * atr_yuzde * hacim_etkisi)
-            gun_artis_yuzde = max(min(gun_artis_yuzde, atr_yuzde * 1.5), -atr_yuzde * 1.5)
+        # GÜN İÇİ PİK VE SİNYAL ÜRETİMİ (DAY TRADING MANTIĞI)
+        if son_fiyat >= upper_band and son_rsi > 70:
+            sinyal = "PİK YAPTI - KÂR AL (SAT)"
+            strateji_metni = (
+                f"🚨 **DİKKAT (ZİRVE):** Fiyat Bollinger üst bandını ({round(upper_band, 2)}) aştı ve RSI aşırı alımda ({round(son_rsi, 1)}). "
+                f"Hisse şu an gün içi **PİK (Tepe)** noktasında olabilir. Geri çekilme riski çok yüksek. "
+                f"Kârı cebe yakışır prensibiyle **{son_fiyat} SEK** civarından satış (exit) planlanmalıdır."
+            )
+            tahmin_yonu = -1 # Düşüş bekleniyor
             
-            kumbulatif_fiyat = kumbulatif_fiyat * (1 + (gun_artis_yuzde / 100))
-            tahminler_yuzde[f'{gun}. Gün Tahmin (%)'] = round(((kumbulatif_fiyat - son_fiyat) / son_fiyat) * 100, 2)
+        elif hacim_kati > 1.5 and son_fiyat > son_vwap and ema_9 > ema_21 and 40 <= son_rsi <= 65:
+            sinyal = "GÜÇLÜ AL & TUT"
+            strateji_metni = (
+                f"🔥 **MOMENTUM YÜKSEK:** Hacim {round(hacim_kati, 1)}x arttı ve fiyat VWAP'ın ({round(son_vwap, 2)}) üzerinde tutunuyor. "
+                f"Yükseliş trendi güçlü. Satış için acele etme. İlk hedef ve potansiyel gün içi zirve (pik) noktası **{potansiyel_pik} SEK** seviyesidir. "
+                f"🛡️ **İzleyen Stop:** {stop_loss} SEK altında saatlik kapanış gelirse pozisyonu kapat."
+            )
+            tahmin_yonu = 1.5
             
-            aktif_momentum *= 0.5 
-            hacim_etkisi = max(1.0, hacim_etkisi * 0.8)
-
-        # Dinamik Destek/Direnç ve Stop Loss (ATR Tabanlı)
-        destek_s1 = round(son_fiyat - (atr_14 * 0.8), 2)
-        direnc_r1 = round(son_fiyat + (atr_14 * 0.8), 2)
-        stop_loss = round(son_fiyat - (atr_14 * 1.5), 2)
-
-        # Sinyal Üretimi
-        if hacim_kati > 1.4 and son_fiyat > ema_5 and ema_5 > ema_20 and 48 <= son_rsi <= 68:
-            sinyal = "GÜÇLÜ AL"
-        elif (son_rsi < 35 and hacim_kati > 1.2) or (son_fiyat > ema_5 and son_rsi < 62):
-            sinyal = "AL"
-        elif son_rsi > 70 or (son_fiyat < ema_5 and hacim_kati > 1.5):
-            sinyal = "SAT"
-        else:
-            sinyal = "NÖTR"
-
-        # --- GÜN İÇİ HİKAYELEŞTİRİLMİŞ GERÇEKÇİ TAHMİN (SENİN İSTEDİĞİN FORMAT) ---
-        ilk_gun_artis = tahminler_yuzde['1. Gün Tahmin (%)']
-        beklenen_kapanis = round(son_fiyat * (1 + (ilk_gun_artis / 100)), 2)
-        
-        # Sabah alım noktası fiyatın ATR'nin %30'u kadar altına esnemesiyle bulunur
-        sabah_alim = round(son_fiyat - (atr_14 * 0.3), 2)
-        
-        # Gün içi zirve: Yükseliş bekleniyorsa kapanışın biraz üstü, düşüş bekleniyorsa açılışın biraz üstü
-        if ilk_gun_artis > 0:
-            gun_ici_zirve = round(beklenen_kapanis + (atr_14 * 0.4), 2)
-        else:
-            gun_ici_zirve = round(son_fiyat + (atr_14 * 0.2), 2)
-
-        if sinyal in ["GÜÇLÜ AL", "AL"]:
+        elif son_fiyat < lower_band and son_rsi < 30:
+            sinyal = "DİPTEN TEPKİ (AL)"
             strateji_metni = (
-                f"🎯 **Senaryo:** Sabah 09:00 - 10:00 arası piyasa açılış esnemesinde **{sabah_alim} SEK** civarından pozisyon alınabilir. "
-                f"Öğleden sonra 14:00 - 15:00 bandında hacimle beraber gün içi maksimum **{gun_ici_zirve} SEK** seviyelerini test etmesi, "
-                f"ardından kâr satışlarıyla günü **{beklenen_kapanis} SEK** civarında kapatması beklenebilir. <br>"
-                f"🛡️ <b>Risk:</b> Ters bir durumda <b>{stop_loss} SEK</b> seviyesi zarar-kes (stop-loss) olarak kullanılmalıdır."
+                f"🎯 **DİP FIRSATI:** Hisse gün içi aşırı satıldı (RSI: {round(son_rsi, 1)}). "
+                f"Bollinger alt bandından ({round(lower_band, 2)}) tepki alımları gelebilir. "
+                f"Kısa vadeli (scalping) bir işlemle **{round(son_vwap, 2)} SEK** seviyesine kadar bir sıçrama (bounce) beklenebilir. Stop: {stop_loss} SEK."
             )
-        elif sinyal == "SAT":
-            strateji_metni = (
-                f"⚠️ **Senaryo:** Hisse aşırı alım/satış baskısı altında. Sabah açılışta **{sabah_alim} SEK** seviyesinden zayıf bir tepki verse de, "
-                f"gün içi en fazla **{gun_ici_zirve} SEK** seviyelerine tutunması ve ardından günü zayıf bir şekilde **{beklenen_kapanis} SEK** "
-                f"civarında kapatması yüksek olasılıktır. Alım önerilmez."
-            )
+            tahmin_yonu = 1
+            
         else:
+            sinyal = "NÖTR (İZLE)"
             strateji_metni = (
-                f"⚖️ **Senaryo:** Fiyat yatay ve kararsız. Sabah dalgalanmasında **{sabah_alim} SEK** ile öğleden sonra **{gun_ici_zirve} SEK** "
-                f"arasında testere (git-gel) yapması öngörülüyor. Gün sonu kapanış tahmini **{beklenen_kapanis} SEK**. "
-                f"Net bir kırılım olmadığı için gün içi işlem riski yüksektir."
+                f"⚖️ **YATAY SEYİR:** Fiyat ortalamalar arasında sıkışmış durumda. Net bir trend yok. "
+                f"Pik tahmini zor ancak yukarı kırılımda {round(upper_band, 2)} SEK, aşağı kırılımda {round(lower_band, 2)} SEK hedeflenebilir. İşlem için hacmin artmasını bekle."
             )
+            tahmin_yonu = 0
+
+        # UI için Tahmin yüzdelerini sembolik hesaplayalım (Gelecek 1-2 saatlik beklenti)
+        beklenen_getiri = round((atr_14 / son_fiyat) * 100 * tahmin_yonu, 2)
 
         return {
             'Şirket Adı': sirket_adi,
             'Kod': h_clean,
             'Son Fiyat (SEK)': round(son_fiyat, 2),
-            '1. Gün Tahmin (%)': tahminler_yuzde['1. Gün Tahmin (%)'],
-            '2. Gün Tahmin (%)': tahminler_yuzde['2. Gün Tahmin (%)'],
-            '3. Gün Tahmin (%)': tahminler_yuzde['3. Gün Tahmin (%)'],
+            '1 Saatlik Yön (%)': beklenen_getiri, # Eskiden 1. Gün Tahmindi, artık 1 saat
             'Sinyal': sinyal,
             'RSI (14)': round(son_rsi, 1),
             'Hacim Katı': round(hacim_kati, 1),
-            'Destek (S1)': destek_s1,
-            'Direnç (R1)': direnc_r1,
+            'VWAP': round(son_vwap, 2),
+            'Potansiyel Pik': potansiyel_pik,
             'Stop-Loss': stop_loss,
             'Strateji': strateji_metni,
             'Analiz Zamanı': datetime.now().strftime("%Y-%m-%d %H:%M")
