@@ -38,7 +38,7 @@ except ImportError:
     pass
 
 # ---------------------------------------------------------
-# SAYFA YAPILANDIRMASI & CSS
+# SAYFA YAPILANDIRMASI & MODERN CSS
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Avanza Pro Quant Panel",
@@ -52,18 +52,150 @@ DB_FILE = "avanza_quant.db"
 
 st.markdown("""
     <style>
+    /* Ana konteyner */
     .block-container {
         padding-top: 1.5rem;
         padding-bottom: 2rem;
-        padding-left: 0.8rem;
-        padding-right: 0.8rem;
+        padding-left: 1.2rem;
+        padding-right: 1.2rem;
+        max-width: 1400px;
     }
-    .metric-card {
+
+    /* Sidebar karanlık tema */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0f0f1e 0%, #1a1a2e 100%);
+    }
+    section[data-testid="stSidebar"] .stMarkdown, 
+    section[data-testid="stSidebar"] label {
+        color: #e0e0e0 !important;
+    }
+
+    /* Başlık stilleri */
+    h1 {
+        background: linear-gradient(90deg, #00d4ff, #7b2ff7);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+    }
+    h2, h3 {
+        color: #e8e8e8;
+        font-weight: 600;
+    }
+
+    /* Tab stilleri */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background: transparent;
+    }
+    .stTabs [data-baseweb="tab"] {
+        padding: 10px 20px;
+        border-radius: 10px 10px 0 0;
+        border: 1px solid #333;
+        background: #1a1a2e;
+        color: #aaa;
+        font-weight: 500;
+        font-size: 0.9rem;
+    }
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #1e3a5f, #2d5a87);
+        color: #fff !important;
+        border-color: #00d4ff;
+        box-shadow: 0 -2px 8px rgba(0, 212, 255, 0.15);
+    }
+
+    /* Metric kartları */
+    [data-testid="stMetric"] {
         background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        padding: 1rem;
-        border-radius: 0.6rem;
-        border-left: 4px solid #e94560;
-        margin-bottom: 0.5rem;
+        padding: 1rem 1.2rem;
+        border-radius: 0.8rem;
+        border-left: 3px solid #00d4ff;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    [data-testid="stMetric"] label {
+        color: #8ab4f8 !important;
+        font-size: 0.78rem !important;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    [data-testid="stMetric"] [data-testid="stMetricValue"] {
+        color: #ffffff !important;
+        font-size: 1.5rem !important;
+        font-weight: 700;
+    }
+
+    /* Buton stilleri */
+    .stButton > button {
+        border-radius: 10px;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+        transition: all 0.2s;
+        border: none;
+        background: linear-gradient(135deg, #00d4ff, #7b2ff7);
+    }
+    .stButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 16px rgba(0, 212, 255, 0.3);
+    }
+
+    /* Selectbox stilleri */
+    [data-baseweb="select"] > div {
+        background: #1a1a2e;
+        border-color: #333;
+        border-radius: 8px;
+    }
+
+    /* Info/Warning/Success/Error kutuları */
+    .stAlert {
+        border-radius: 10px;
+        border: 1px solid;
+    }
+    .stAlert [data-testid="stAlertContentInfo"] {
+        background: rgba(0, 212, 255, 0.08);
+        border-color: rgba(0, 212, 255, 0.3);
+    }
+
+    /* Dataframe */
+    .stDataFrame {
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    /* Divider */
+    hr {
+        border: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, #333, transparent);
+        margin: 1.5rem 0;
+    }
+
+    /* Scroll bar */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+        background: #0f0f1e;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #333;
+        border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+
+    /* Caption */
+    .stCaption {
+        color: #666 !important;
+        font-size: 0.82rem !important;
+    }
+
+    /* Progress bar */
+    .stProgress > div > div {
+        background: linear-gradient(90deg, #00d4ff, #7b2ff7);
+        border-radius: 10px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -923,13 +1055,9 @@ def tek_hisse_analiz_et(h_kod):
 
 
 # ===================================================================
-# STREAMLIT UI — TABBED INTERFACE
+# SIDEBAR — Hisse Listesi & Ayarlar
 # ===================================================================
-st.title("⚡ Avanza Pro Quant Panel")
-st.caption("🚀 15m Zirve Avcısı + ML Tahmin + Backtest + Risk Yönetimi + Sharpe Metrikleri")
-
-# Sidebar
-st.sidebar.header("⚙️ Ayarlar")
+st.sidebar.markdown("## ⚙️ Kontrol Paneli")
 
 varsayilan_liste = (
     "ELUX-B, ANOD-B, LIME, ELUX-A, MIPS, ARLA, NTEK-B, PRIC-B, BILL, BOOZT, NANO, QLINEA, XBRANE, HOLM-B, "
@@ -942,8 +1070,11 @@ varsayilan_liste = (
     "ATCO-A, ENGCON-B, EPI-B, ALFA, ATCO-B, BUFAB, AQ, DYNA, MEKE-B, PREC, IRLAB-A, MYCR, DEDI-B, WISE"
 )
 
-girdi = st.sidebar.text_area("Hisse Listeniz:", value=varsayilan_liste, height=350)
+girdi = st.sidebar.text_area("📋 Hisse Listeniz:", value=varsayilan_liste, height=300)
 hisseler = [h.strip() for h in girdi.split(",") if h.strip()]
+
+# Hisse sayacı
+st.sidebar.caption(f"📊 Listedeki hisse sayısı: **{len(hisseler)}**")
 
 # ML backend info
 ml_backend = "Yok"
@@ -953,12 +1084,31 @@ elif _HAS_XGBOOST:
     ml_backend = "XGBoost"
 elif _HAS_SKLEARN:
     ml_backend = "sklearn-GradientBoosting"
-st.sidebar.info(f"🤖 ML Backend: **{ml_backend}**")
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🤖 Sistem Durumu")
+st.sidebar.markdown(f"- **ML Backend:** `{ml_backend}`")
+st.sidebar.markdown(f"- **Database:** `SQLite` ✓")
+st.sidebar.markdown(f"- **Veri Kaynağı:** `Yahoo Finance` ✓")
 
 if ml_backend == "Yok":
-    st.sidebar.warning("ML için kurulum: `pip install lightgbm xgboost scikit-learn`")
+    st.sidebar.warning("ML için: `pip install lightgbm xgboost scikit-learn`")
 
-# Tabs
+st.sidebar.markdown("---")
+st.sidebar.caption("⚠️ Eğitim amaçlıdır. Yatırım tavsiyesi değildir.")
+
+
+# ===================================================================
+# BAŞLIK
+# ===================================================================
+st.markdown("# ⚡ Avanza Pro Quant Panel")
+st.markdown("*15m Zirve Avcısı · ML Tahmin · Backtest · Risk Yönetimi · Sharpe Metrikleri*")
+st.markdown("---")
+
+
+# ===================================================================
+# TABS
+# ===================================================================
 tab_analiz, tab_backtest, tab_ml, tab_risk, tab_gecmis = st.tabs([
     "📊 Canlı Analiz",
     "🔬 Backtest",
@@ -967,14 +1117,16 @@ tab_analiz, tab_backtest, tab_ml, tab_risk, tab_gecmis = st.tabs([
     "📜 Geçmiş"
 ])
 
+
 # ===================================================================
-# TAB 1: CANLI ANALİZ (mevcut fonksiyonellik)
+# TAB 1: CANLI ANALİZ
 # ===================================================================
 with tab_analiz:
     gorunum_modu = st.radio(
-        "📱 Görünüm Modu:",
-        ["Mobil Kart Görünümü (Tavsiye)", "Klasik Masaüstü Tablosu"],
-        horizontal=True
+        "Görünüm Modu:",
+        ["Kart Görünümü", "Tablo Görünümü"],
+        horizontal=True,
+        label_visibility="collapsed"
     )
 
     if "pro_analiz_df" not in st.session_state:
@@ -982,6 +1134,12 @@ with tab_analiz:
             st.session_state.pro_analiz_df = pd.read_csv(DATA_FILE)
         else:
             st.session_state.pro_analiz_df = None
+
+    col_scan1, col_scan2 = st.columns([4, 1])
+    with col_scan1:
+        st.caption(f"📊 Taranacak hisse sayısı: **{len(hisseler)}**")
+    with col_scan2:
+        pass
 
     if st.button("🔄 Hibrid Analizi Başlat (Day + Swing Trade)", type="primary", use_container_width=True):
         if hisseler:
@@ -1031,8 +1189,9 @@ with tab_analiz:
         c2.metric("Gün İçi İvmeli", len(df_res[df_res['1 Saatlik Yön (%)'] > 0]))
         c3.metric("Yarın Yükseliş Beklenen", len(df_res[df_res['1. Gün Tahmin (%)'] > 0]))
 
-        if gorunum_modu == "Mobil Kart Görünümü (Tavsiye)":
-            st.subheader("🔥 Canlı Aksiyon Planları & Çoklu Tahminler")
+        if gorunum_modu == "Kart Görünümü":
+            st.markdown("---")
+            st.markdown("### 🔥 Canlı Aksiyon Planları & Çoklu Tahminler")
             for _, row in df_res.iterrows():
                 with st.container():
                     col_h, col_s = st.columns([3, 1])
@@ -1069,7 +1228,7 @@ with tab_analiz:
                         f"Olası bir sabah esnemesinde **{row['Yarınki Alış']} SEK** "
                         f"seviyesi alım için takip edilebilir."
                     )
-                    st.divider()
+                    st.markdown("---")
         else:
             st.dataframe(df_res.drop(columns=['Strateji']), use_container_width=True)
 
@@ -1078,31 +1237,49 @@ with tab_analiz:
 # TAB 2: BACKTEST
 # ===================================================================
 with tab_backtest:
-    st.subheader("🔬 Backtest Sistemi")
+    st.markdown("### 🔬 Backtest Sistemi")
     st.caption("Zaman serisi split · Lookahead yok · İşlem maliyetleri · Walk-forward")
 
     col_bt1, col_bt2, col_bt3 = st.columns(3)
     with col_bt1:
-        bt_hisse = st.text_input("Hisse Kodu:", value="ELUX-B", key="bt_hisse")
+        bt_hisse = st.selectbox(
+            "Hisse Seç:",
+            options=hisseler if hisseler else ["ELUX-B"],
+            index=0,
+            key="bt_hisse"
+        )
     with col_bt2:
         bt_capital = st.number_input("Başlangıç Sermayesi (SEK):", value=10000, min_value=1000, step=1000, key="bt_capital")
     with col_bt3:
-        bt_strategy = st.selectbox("Strateji:", ["rule", "ml"], format_func=lambda x: "Kural Bazlı (RSI+Bollinger)" if x == "rule" else "ML Tahminli", key="bt_strategy")
+        bt_strategy = st.selectbox(
+            "Strateji:",
+            ["rule", "ml"],
+            format_func=lambda x: "📊 Kural Bazlı (RSI+Bollinger)" if x == "rule" else "🤖 ML Tahminli",
+            key="bt_strategy"
+        )
 
     col_bt4, col_bt5 = st.columns(2)
     with col_bt4:
-        bt_range = st.selectbox("Veri Aralığı:", ["6mo", "1y", "2y", "5y"], index=1, key="bt_range")
+        bt_range = st.selectbox(
+            "Veri Aralığı:",
+            ["6mo", "1y", "2y", "5y"],
+            format_func=lambda x: {"6mo": "6 Ay", "1y": "1 Yıl", "2y": "2 Yıl", "5y": "5 Yıl"}[x],
+            index=1,
+            key="bt_range"
+        )
     with col_bt5:
         bt_risk = st.slider("Risk / İşlem (%):", 1, 5, 2, key="bt_risk")
 
-    if st.button("🚀 Backtest Çalıştır", type="primary", key="bt_run"):
+    st.markdown("")
+
+    if st.button("🚀 Backtest Çalıştır", type="primary", use_container_width=True, key="bt_run"):
         with st.spinner("Veri çekiliyor..."):
             df_bt, bt_name = fetch_yahoo_data(bt_hisse, "1d", bt_range)
 
         if df_bt is None or len(df_bt) < 100:
             st.error(f"Yetersiz veri veya hisse bulunamadı: {bt_hisse}")
         else:
-            st.info(f"📈 {bt_hisse} — {len(df_bt)} gün veri yüklendi")
+            st.info(f"📈 **{bt_hisse}** — {len(df_bt)} gün veri yüklendi")
 
             # ML predictor (strategi ML ise)
             ml_pred = None
@@ -1157,7 +1334,7 @@ with tab_backtest:
                 st.markdown("---")
 
                 # Equity curve
-                st.subheader("📊 Equity Curve")
+                st.markdown("### 📊 Equity Curve")
                 eq_dates, eq_values = zip(*metrics['equity_curve'])
                 eq_df = pd.DataFrame({'Tarih': eq_dates, 'Portfolio (SEK)': eq_values})
                 st.line_chart(eq_df.set_index('Tarih'), use_container_width=True)
@@ -1171,7 +1348,7 @@ with tab_backtest:
                 # Trade log
                 if result['trades']:
                     st.markdown("---")
-                    st.subheader(f"📋 İşlem Geçmişi ({len(result['trades'])} işlem)")
+                    st.markdown(f"### 📋 İşlem Geçmişi ({len(result['trades'])} işlem)")
                     trades_df = pd.DataFrame(result['trades'])
                     st.dataframe(trades_df[['entry_date', 'entry_price', 'exit_date',
                                            'exit_price', 'shares', 'pnl',
@@ -1182,7 +1359,7 @@ with tab_backtest:
 # TAB 3: ML TAHMIN
 # ===================================================================
 with tab_ml:
-    st.subheader("🤖 ML Yön Tahmin Modeli")
+    st.markdown("### 🤖 ML Yön Tahmin Modeli")
     st.caption("Gradient Boosting · 18 Feature · Zaman Serisi Split · Lookahead Yok")
 
     if ml_backend == "Yok":
@@ -1190,11 +1367,24 @@ with tab_ml:
     else:
         col_ml1, col_ml2 = st.columns(2)
         with col_ml1:
-            ml_hisse = st.text_input("Hisse Kodu:", value="ELUX-B", key="ml_hisse")
+            ml_hisse = st.selectbox(
+                "Hisse Seç:",
+                options=hisseler if hisseler else ["ELUX-B"],
+                index=0,
+                key="ml_hisse"
+            )
         with col_ml2:
-            ml_range = st.selectbox("Veri Aralığı:", ["6mo", "1y", "2y", "5y"], index=2, key="ml_range")
+            ml_range = st.selectbox(
+                "Veri Aralığı:",
+                ["6mo", "1y", "2y", "5y"],
+                format_func=lambda x: {"6mo": "6 Ay", "1y": "1 Yıl", "2y": "2 Yıl", "5y": "5 Yıl"}[x],
+                index=2,
+                key="ml_range"
+            )
 
-        if st.button("🎯 Model Eğit & Tahmin Et", type="primary", key="ml_train"):
+        st.markdown("")
+
+        if st.button("🎯 Model Eğit & Tahmin Et", type="primary", use_container_width=True, key="ml_train"):
             with st.spinner("Veri çekiliyor..."):
                 df_ml, ml_name = fetch_yahoo_data(ml_hisse, "1d", ml_range)
 
@@ -1231,7 +1421,7 @@ with tab_ml:
                     # Feature importance
                     if result.get('feature_importance'):
                         st.markdown("---")
-                        st.subheader("🔧 Feature Importance")
+                        st.markdown("### 🔧 Feature Importance")
                         fi_df = pd.DataFrame([
                             {'Feature': k, 'Importance': v}
                             for k, v in sorted(
@@ -1244,52 +1434,85 @@ with tab_ml:
                     # Classification report
                     if result.get('classification_report'):
                         st.markdown("---")
-                        st.subheader("📋 Sınıflandırma Raporu")
+                        st.markdown("### 📋 Sınıflandırma Raporu")
                         cr = result['classification_report']
                         cr_df = pd.DataFrame(cr).T.drop(columns=['support'], errors='ignore')
                         st.dataframe(cr_df, use_container_width=True)
 
                     # Feature açıklamaları
                     st.markdown("---")
-                    st.subheader("📝 Kullanılan Feature'lar")
-                    feat_desc = [
-                        ("Returns", "Günlük getiri oranı"),
-                        ("Returns_5d", "5 günlük kümülatif getiri"),
-                        ("Returns_10d", "10 günlük kümülatif getiri"),
-                        ("RSI", "Relative Strength Index (14)"),
-                        ("MACD", "MACD hattı (12,26)"),
-                        ("MACD_Signal", "MACD sinyal hattı (9)"),
-                        ("MACD_Hist", "MACD histogramı"),
-                        ("BB_PctB", "Bollinger %B pozisyonu"),
-                        ("ATR_Pct", "ATR / Fiyat (%)"),
-                        ("Volume_Ratio", "Hacim / 20 günlük ortalama hacim"),
-                        ("SMA_Diff", "(SMA20 - SMA50) / SMA50"),
-                        ("Momentum_5", "5 günlük momentum"),
-                        ("Momentum_10", "10 günlük momentum"),
-                        ("Volatility_20", "20 günlük getiri volatilitesi"),
-                        ("Volatility_5", "5 günlük getiri volatilitesi"),
-                        ("Return_Lag1", "1 gün önceki getiri"),
-                        ("Return_Lag2", "2 gün önceki getiri"),
-                        ("Return_Lag3", "3 gün önceki getiri"),
-                    ]
-                    for name, desc in feat_desc:
-                        st.write(f"- **{name}**: {desc}")
+                    with st.expander("📝 Kullanılan Feature'lar (18 adet)"):
+                        feat_desc = [
+                            ("Returns", "Günlük getiri oranı"),
+                            ("Returns_5d", "5 günlük kümülatif getiri"),
+                            ("Returns_10d", "10 günlük kümülatif getiri"),
+                            ("RSI", "Relative Strength Index (14)"),
+                            ("MACD", "MACD hattı (12,26)"),
+                            ("MACD_Signal", "MACD sinyal hattı (9)"),
+                            ("MACD_Hist", "MACD histogramı"),
+                            ("BB_PctB", "Bollinger %B pozisyonu"),
+                            ("ATR_Pct", "ATR / Fiyat (%)"),
+                            ("Volume_Ratio", "Hacim / 20 günlük ortalama hacim"),
+                            ("SMA_Diff", "(SMA20 - SMA50) / SMA50"),
+                            ("Momentum_5", "5 günlük momentum"),
+                            ("Momentum_10", "10 günlük momentum"),
+                            ("Volatility_20", "20 günlük getiri volatilitesi"),
+                            ("Volatility_5", "5 günlük getiri volatilitesi"),
+                            ("Return_Lag1", "1 gün önceki getiri"),
+                            ("Return_Lag2", "2 gün önceki getiri"),
+                            ("Return_Lag3", "3 gün önceki getiri"),
+                        ]
+                        for name, desc in feat_desc:
+                            st.write(f"- **{name}**: {desc}")
 
 
 # ===================================================================
 # TAB 4: RISK YÖNETİMİ
 # ===================================================================
 with tab_risk:
-    st.subheader("🛡️ Risk Yönetimi Hesaplayıcı")
+    st.markdown("### 🛡️ Risk Yönetimi Hesaplayıcı")
     st.caption("Position sizing · Stop-loss · Take-profit · Max drawdown")
+
+    col_rk_hisse, col_rk_fetch = st.columns([3, 1])
+    with col_rk_hisse:
+        rk_hisse = st.selectbox(
+            "Hisse Seç:",
+            options=hisseler if hisseler else ["ELUX-B"],
+            index=0,
+            key="rk_hisse"
+        )
+    with col_rk_fetch:
+        st.write("")
+        fetch_clicked = st.button("📥 Veri Çek", key="rk_fetch_btn", use_container_width=True)
+
+    # Veri çekme (buton veya hisse değişince)
+    if fetch_clicked or rk_hisse:
+        with st.spinner(f"{rk_hisse} verisi çekiliyor..."):
+            df_rk, rk_name = fetch_yahoo_data(rk_hisse, "1d", "3mo")
+
+        if df_rk is not None and len(df_rk) >= 50:
+            rk_son_fiyat = round(float(df_rk['Close'].iloc[-1]), 2)
+            rk_atr_val = round(float(compute_atr(df_rk, 14).iloc[-1]), 2)
+            rk_rsi_val = round(float(compute_rsi(df_rk['Close'], 14).iloc[-1]), 1)
+            st.success(f"✅ {rk_hisse} — Fiyat: {rk_son_fiyat} SEK | ATR: {rk_atr_val} | RSI: {rk_rsi_val}")
+        else:
+            rk_son_fiyat = 100.0
+            rk_atr_val = 3.0
+            rk_rsi_val = 50.0
+            if fetch_clicked:
+                st.warning("Veri çekilemedi, manuel giriş kullanın.")
+    else:
+        rk_son_fiyat = 100.0
+        rk_atr_val = 3.0
+        rk_rsi_val = 50.0
 
     col_rk1, col_rk2 = st.columns(2)
     with col_rk1:
         rk_portfolio = st.number_input("Portföy Değeri (SEK):", value=100000, min_value=1000, step=5000, key="rk_portfolio")
-        rk_price = st.number_input("Giriş Fiyatı (SEK):", value=100.0, min_value=0.1, step=1.0, key="rk_price")
+        rk_price = st.number_input("Giriş Fiyatı (SEK):", value=float(rk_son_fiyat), min_value=0.1, step=1.0, key="rk_price")
     with col_rk2:
         rk_risk = st.slider("Risk / İşlem (%):", 1, 5, 2, key="rk_risk")
-        rk_atr = st.number_input("ATR (SEK):", value=3.0, min_value=0.01, step=0.1, key="rk_atr")
+        rk_atr = st.number_input("ATR (SEK):", value=float(rk_atr_val), min_value=0.01, step=0.1, key="rk_atr")
 
     col_rk3, col_rk4 = st.columns(2)
     with col_rk3:
@@ -1297,7 +1520,9 @@ with tab_risk:
     with col_rk4:
         rk_tp_mult = st.slider("Take-Profit (ATR x):", 1.0, 6.0, 3.0, 0.5, key="rk_tp_mult")
 
-    if st.button("🛡️ Pozisyon Hesapla", type="primary", key="rk_calc"):
+    st.markdown("")
+
+    if st.button("🛡️ Pozisyon Hesapla", type="primary", use_container_width=True, key="rk_calc"):
         rm = RiskManager(
             risk_per_trade=rk_risk / 100,
             stop_loss_atr_mult=rk_sl_mult,
@@ -1343,17 +1568,35 @@ with tab_risk:
 # TAB 5: GECMIS (SQLite)
 # ===================================================================
 with tab_gecmis:
-    st.subheader("📜 Geçmiş Kayıtlar")
+    st.markdown("### 📜 Geçmiş Kayıtlar")
     st.caption("SQLite veritabanından — tahminler, backtest sonuçları ve ML modelleri")
 
-    gecis_sekme = st.radio("Kayıt Tipi:", ["Tahminler", "Backtest Sonuçları", "ML Tahminleri"], horizontal=True)
+    gecis_sekme = st.radio(
+        "Kayıt Tipi:",
+        ["Tahminler", "Backtest Sonuçları", "ML Tahminleri"],
+        horizontal=True
+    )
 
     if gecis_sekme == "Tahminler":
-        df_pred = db.get_prediction_history(limit=100)
+        col_g1, col_g2 = st.columns([3, 1])
+        with col_g2:
+            filter_kod_pred = st.selectbox(
+                "Hisse Filtresi:",
+                ["Tümü"] + hisseler[:20],
+                key="filter_pred"
+            )
+        df_pred = db.get_prediction_history(
+            kod=None if filter_kod_pred == "Tümü" else filter_kod_pred,
+            limit=100
+        )
         if df_pred.empty:
             st.info("Henüz tahmin kaydı yok.")
         else:
-            st.dataframe(df_pred, use_container_width=True)
+            display_cols = ['tarih', 'kod', 'sirket_adi', 'son_fiyat', 'sinyal',
+                            'tahmin_1g', 'tahmin_2g', 'tahmin_3g',
+                            'rsi_15m', 'vwap', 'analiz_zamani']
+            available_cols = [c for c in display_cols if c in df_pred.columns]
+            st.dataframe(df_pred[available_cols], use_container_width=True)
             st.download_button(
                 "📥 CSV İndir",
                 df_pred.to_csv(index=False),
@@ -1374,9 +1617,12 @@ with tab_gecmis:
 
             # Backtest detayı
             st.markdown("---")
-            st.subheader("🔍 Backtest Detayı")
-            selected_run = st.selectbox("Run seç:", df_bt['id'].tolist(),
-                                        format_func=lambda x: f"Run #{x} — {df_bt[df_bt['id']==x]['kod'].iloc[0]} ({df_bt[df_bt['id']==x]['run_date'].iloc[0]})")
+            st.markdown("### 🔍 Backtest Detayı")
+            selected_run = st.selectbox(
+                "Run seç:",
+                df_bt['id'].tolist(),
+                format_func=lambda x: f"Run #{x} — {df_bt[df_bt['id']==x]['kod'].iloc[0]} ({df_bt[df_bt['id']==x]['run_date'].iloc[0]})"
+            )
             if selected_run:
                 trades_df = db.get_trades_for_run(selected_run)
                 if not trades_df.empty:
@@ -1401,7 +1647,7 @@ with tab_gecmis:
                     fi = json.loads(latest['feature_importance'])
                     if fi:
                         st.markdown("---")
-                        st.subheader(f"🔧 Son Model Feature Importance — {latest['model_name']}")
+                        st.markdown(f"### 🔧 Son Model Feature Importance — {latest['model_name']}")
                         fi_df = pd.DataFrame([
                             {'Feature': k, 'Importance': v}
                             for k, v in sorted(fi.items(), key=lambda x: x[1], reverse=True)
