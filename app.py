@@ -41,7 +41,7 @@ except ImportError:
 # SAYFA YAPILANDIRMASI & MODERN CSS
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Avanza Pro Quant Panel",
+    page_title="Borsa Panel",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
