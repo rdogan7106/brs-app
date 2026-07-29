@@ -25,53 +25,6 @@ st.markdown("""
         padding-left: 0.8rem;
         padding-right: 0.8rem;
     }
-    .stock-card {
-        background-color: #f8f9fa;
-        border: 1px solid #e9ecef;
-        border-radius: 10px;
-        padding: 12px;
-        margin-bottom: 12px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    .strategy-box {
-        background-color: #e3f2fd;
-        border-left: 5px solid #1976d2;
-        padding: 10px;
-        border-radius: 5px;
-        margin-top: 10px;
-        font-size: 0.9rem;
-        color: #0d47a1;
-        line-height: 1.4;
-    }
-    .buy-box {
-        background-color: #e8f5e9;
-        border-left: 5px solid #2e7d32;
-        padding: 8px;
-        border-radius: 5px;
-        margin-top: 8px;
-        font-size: 0.9rem;
-        color: #1b5e20;
-    }
-    @media (prefers-color-scheme: dark) {
-        .stock-card {
-            background-color: #1e2129;
-            border-color: #2d323e;
-        }
-        .strategy-box {
-            background-color: #1a233a;
-            border-left: 5px solid #64b5f6;
-            color: #e3f2fd;
-        }
-        .buy-box {
-            background-color: #1b281d;
-            border-left: 5px solid #81c784;
-            color: #c8e6c9;
-        }
-    }
-    .badge-green { color: #2e7d32; font-weight: bold; }
-    .badge-red { color: #c62828; font-weight: bold; }
-    .badge-neutral { color: #f57f17; font-weight: bold; }
-    .divider { border-top: 1px dashed #ccc; margin: 10px 0; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -178,31 +131,19 @@ def tek_hisse_analiz_et(h_kod):
 
         if son_fiyat >= upper_band and son_rsi_15m > 70:
             sinyal = "PİK YAPTI (SAT)"
-            strateji_metni = (
-                f"🚨 **DİKKAT (ZİRVE):** Fiyat Bollinger üst bandını aştı. Geri çekilme riski çok yüksek. "
-                f"Kârı cebe yakışır prensibiyle satıp nakde geçme zamanı."
-            )
+            strateji_metni = "Fiyat Bollinger üst bandını aştı. Geri çekilme riski yüksek. Kârı cebe koyup çıkış planlanmalı."
             saatlik_yon = -1.0 
         elif hacim_kati > 1.2 and son_fiyat > son_vwap and tahminler_yuzde['1. Gün Tahmin (%)'] > 0:
             sinyal = "GÜÇLÜ AL & TUT"
-            strateji_metni = (
-                f"🔥 **MOMENTUM YÜKSEK:** Fiyat VWAP'ın ({son_vwap} SEK) üzerinde. Yükseliş trendi güçlü. "
-                f"Gün içi potansiyel zirve hedefi **{potansiyel_pik} SEK** seviyesidir."
-            )
+            strateji_metni = f"Fiyat VWAP üzerinde ve momentum yüksek. Gün içi potansiyel pik hedefi {potansiyel_pik} SEK."
             saatlik_yon = 1.5
         elif son_fiyat < lower_band and son_rsi_15m < 30:
             sinyal = "DİPTEN TEPKİ (AL)"
-            strateji_metni = (
-                f"🎯 **DİP FIRSATI:** Hisse gün içi aşırı satıldı. "
-                f"Kısa vadeli bir işlemle **{son_vwap} SEK** seviyesine kadar tepki sıçraması beklenebilir."
-            )
+            strateji_metni = f"Hisse gün içi aşırı satıldı. {son_vwap} SEK seviyesine kadar tepki sıçraması beklenebilir."
             saatlik_yon = 1.0
         else:
             sinyal = "NÖTR (İZLE)"
-            strateji_metni = (
-                f"⚖️ **YATAY SEYİR:** Net bir trend yok. Yukarı kırılımda {round(upper_band, 2)} SEK, "
-                f"aşağı kırılımda ise {round(lower_band, 2)} SEK hedeflenebilir."
-            )
+            strateji_metni = "Net bir trend yok, yatay seyir hakim. Kırılımlar beklenmeli."
             saatlik_yon = 0.0
 
         beklenen_1h_getiri = round((atr_14_1d / son_fiyat / 4) * 100 * saatlik_yon, 2)
@@ -294,49 +235,30 @@ if st.session_state.pro_analiz_df is not None:
     c3.metric("Yarın Yükseliş Beklenen", len(df_res[df_res['1. Gün Tahmin (%)'] > 0]))
 
     if gorunum_modu == "Mobil Kart Görünümü (Tavsiye)":
+        st.subheader("🔥 Canlı Aksiyon Planları & Çoklu Tahminler")
         for _, row in df_res.iterrows():
-            t1_color = "green" if row['1 Saatlik Yön (%)'] > 0 else "red" if row['1 Saatlik Yön (%)'] < 0 else "neutral"
-            d1_color = "green" if row['1. Gün Tahmin (%)'] > 0 else "red"
-            d2_color = "green" if row['2. Gün Tahmin (%)'] > 0 else "red"
-            d3_color = "green" if row['3. Gün Tahmin (%)'] > 0 else "red"
-
-            if "AL" in row['Sinyal']: bg_color, text_color = '#d4edda', '#155724'
-            elif "SAT" in row['Sinyal']: bg_color, text_color = '#f8d7da', '#721c24'
-            else: bg_color, text_color = '#fff3cd', '#856404'
-            
-            # BURADAKİ EKSİK PARAMETRE (unsafe_allow_html=True) EKLENDİ:
-            st.markdown(f"""
-            <div class="stock-card">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h4 style="margin:0; font-size: 1.05rem;">{row['Şirket Adı']} <span style="font-size:0.85rem; color:#6c757d;">({row['Kod']})</span></h4>
-                    <span style="background-color: {bg_color}; color: {text_color}; padding: 3px 8px; border-radius: 5px; font-weight: bold; font-size: 0.8rem;">{row['Sinyal']}</span>
-                </div>
-                <div style="margin-top: 8px; font-size: 0.9rem;">
-                    <b>Fiyat:</b> {row['Son Fiyat (SEK)']} SEK | <b>RSI(15m):</b> {row['RSI (15m)']}
-                </div>
+            with st.container():
+                col_h, col_s = st.columns([3, 1])
+                with col_h:
+                    st.markdown(f"### {row['Şirket Adı']} <span style='font-size:0.8rem; color:gray;'>({row['Kod']})</span>", unsafe_allow_html=True)
+                with col_s:
+                    if "AL" in row['Sinyal']:
+                        st.success(row['Sinyal'])
+                    elif "SAT" in row['Sinyal']:
+                        st.error(row['Sinyal'])
+                    else:
+                        st.warning(row['Sinyal'])
                 
-                <div class="divider"></div>
+                st.write(f"**Fiyat:** {row['Son Fiyat (SEK)']} SEK | **RSI(15m):** {row['RSI (15m)']} | **VWAP:** {row['VWAP']} SEK | **Pik Hedefi:** {row['Potansiyel Pik']} SEK")
                 
-                <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 5px;">
-                    <span><b>Day-Trade (1 Saat):</b> <span class="badge-{t1_color}">%{row['1 Saatlik Yön (%)']:+.2f}</span></span>
-                    <span><b>VWAP:</b> {row['VWAP']}</span>
-                    <span><b>Pik Hedefi:</b> <span class="badge-green">{row['Potansiyel Pik']}</span></span>
-                </div>
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("1 Saatlik Yön", f"%{row['1 Saatlik Yön (%)']:+.2f}")
+                m2.metric("1. Gün", f"%{row['1. Gün Tahmin (%)']:+.2f}")
+                m3.metric("2. Gün", f"%{row['2. Gün Tahmin (%)']:+.2f}")
+                m4.metric("3. Gün", f"%{row['3. Gün Tahmin (%)']:+.2f}")
                 
-                <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
-                    <span><b>1. Gün:</b> <span class="badge-{d1_color}">%{row['1. Gün Tahmin (%)']:+.2f}</span></span>
-                    <span><b>2. Gün:</b> <span class="badge-{d2_color}">%{row['2. Gün Tahmin (%)']:+.2f}</span></span>
-                    <span><b>3. Gün:</b> <span class="badge-{d3_color}">%{row['3. Gün Tahmin (%)']:+.2f}</span></span>
-                </div>
-                
-                <div class="strategy-box">
-                    {row['Strateji']}
-                </div>
-                <div class="buy-box">
-                    📅 <b>Yarınki Plan:</b> Olası bir sabah esnemesinde <b>{row['Yarınki Alış']} SEK</b> seviyesi, yeni pozisyon açmak veya maliyet düşürmek için güvenli bir alım noktasıdır.
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
+                st.info(f"🎯 **Strateji:** {row['Strateji']}")
+                st.success(f"📅 **Yarınki Alış Planı:** Olası bir sabah esnemesinde **{row['Yarınki Alış']} SEK** seviyesi alım için takip edilebilir.")
+                st.divider()
     else:
         st.dataframe(df_res.drop(columns=['Strateji']), use_container_width=True)
