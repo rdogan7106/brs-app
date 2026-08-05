@@ -1081,111 +1081,105 @@ def fetch_yahoo_data(h_kod, interval="1d", range_param="3mo", include_vix=False)
         return None, None
 
 
-def tek_hisse_analiz_et(h_kod):
-    """İki katmanlı (15m + 1d) analiz yapar."""
-    h_clean = str(h_kod).strip().upper()
+def tek_hisse_analiz_et(sembol):
+    """
+    Belirtilen hisse senedi için 1 günlük (1d), 15 dakikalık (15m) ve 
+    5 dakikalık (5m) verileri çeker, teknik indikatörleri hesaplar, 
+    ML/Teknik analiz hazırlığı yapar ve VWAP+RSI Scalp stratejisini uygular.
+    """
+    sonuclar = {"sembol": sembol}
+    
+    try:
+        # ---------------------------------------------------------
+        # 1. GÜNLÜK (1d) VE 15 DAKİKALIK (15m) VERİ ANALİZİ
+        # ---------------------------------------------------------
+        df_1d = yf.download(sembol, period="1y", interval="1d", progress=False)
+        df_15m = yf.download(sembol, period="60d", interval="15m", progress=False)
+        
+        # Günlük indikatörler (Örnek olarak RSI ve Bollinger Bantları)
+        if not df_1d.empty and len(df_1d) > 20:
+            df_1d.ta.rsi(length=14, append=True)
+            df_1d.ta.bbands(length=20, std=2, append=True)
+            
+            son_1d = df_1d.iloc[-1]
+            # Sütun isimleri çoklu index veya düzensiz gelebileceği için güvenli okuma
+            rsi_1d_col = [c for c in df_1d.columns if 'RSI' in str(c)][0] if any('RSI' in str(c) for c in df_1d.columns) else None
+            
+            sonuclar["1d_kapanis"] = round(son_1d['Close'], 2) if 'Close' in son_1d else None
+            sonuclar["1d_rsi"] = round(son_1d[rsi_1d_col], 2) if rsi_1d_col else None
+        
+        # 15 Dakikalık indikatörler (Swing / Trend sinyalleri için)
+        if not df_15m.empty and len(df_15m) > 20:
+            df_15m.ta.macd(append=True)
+            df_15m.ta.atr(length=14, append=True)
+            
+            son_15m = df_15m.iloc[-1]
+            sonuclar["15m_kapanis"] = round(son_15m['Close'], 2) if 'Close' in son_15m else None
 
-    df_15m, sirket_adi = fetch_yahoo_data(h_clean, "15m", "5d")
-    df_1d, _ = fetch_yahoo_data(h_clean, "1d", "3mo")
+        # ---------------------------------------------------------
+        # 2. 5 DAKİKALIK (5m) VERİ VE SCALP STRATEJİSİ (VWAP + RSI)
+        # ---------------------------------------------------------
+        # Yahoo Finance, 5m veri için maksimum 60 günlük periyot destekler
+        df_5m = yf.download(sembol, period="5d", interval="5m", progress=False)
+        
+        if not df_5m.empty and len(df_5m) > 20:
+            # Pandas_ta çoklu sütun yapısında veri çerçevesini düzleştirmek gerekebilir
+            if isinstance(df_5m.columns, pd.MultiIndex):
+                df_5m.columns = df_5m.columns.get_level_values(0)
+                
+            # İndikatörleri Hesapla (VWAP ve RSI)
+            df_5m.ta.vwap(append=True) 
+            df_5m.ta.rsi(length=14, append=True)
+            
+            # Dinamik sütun adı bulma
+            vwap_col = [col for col in df_5m.columns if 'VWAP' in str(col)]
+            rsi_col = [col for col in df_5m.columns if 'RSI' in str(col)]
+            
+            vwap_col = vwap_col[0] if vwap_col else 'VWAP'
+            rsi_col = rsi_col[0] if rsi_col else 'RSI_14'
+            
+            son_mum = df_5m.iloc[-1]
+            kapanis_5m = float(son_mum['Close'])
+            vwap_5m = float(son_mum[vwap_col]) if vwap_col in df_5m.columns else kapanis_5m
+            rsi_5m = float(son_mum[rsi_col]) if rsi_col in df_5m.columns else 50.0
+            
+            # Scalp Parametreleri
+            tp_orani = 0.015       # %1.5 Take Profit (Kâr Al)
+            trailing_stop = 0.005  # %0.5 İzleyen Stop (Zarar Kes)
+            
+            scalp_sinyal = "BEKLE"
+            tp_seviyesi = None
+            stop_seviyesi = None
+            
+            # LONG (ALIM) STRATEJİSİ: Fiyat VWAP üzerinde ve RSI 50-65 aralığında
+            if kapanis_5m > vwap_5m and 50 <= rsi_5m <= 65:
+                scalp_sinyal = "AL (Scalp)"
+                tp_seviyesi = kapanis_5m * (1 + tp_orani)
+                stop_seviyesi = kapanis_5m * (1 - trailing_stop)
+                
+            # SHORT (SATIM) STRATEJİSİ: Fiyat VWAP altında ve RSI 35-50 aralığında
+            elif kapanis_5m < vwap_5m and 35 <= rsi_5m < 50:
+                scalp_sinyal = "SAT (Scalp)"
+                tp_seviyesi = kapanis_5m * (1 - tp_orani)
+                stop_seviyesi = kapanis_5m * (1 + trailing_stop)
 
-    if df_15m is None or df_1d is None:
-        return None
-    if len(df_15m) < 30 or len(df_1d) < 30:
-        return None
+            # Sonuçları Sözlüğe Ekle
+            sonuclar.update({
+                "5m_kapanis": round(kapanis_5m, 2),
+                "5m_vwap": round(vwap_5m, 2),
+                "5m_rsi": round(rsi_5m, 2),
+                "scalp_sinyal": scalp_sinyal,
+                "scalp_tp_seviyesi": round(tp_seviyesi, 2) if tp_seviyesi else None,
+                "scalp_stop_seviyesi": round(stop_seviyesi, 2) if stop_seviyesi else None,
+                "trailing_stop_mesafesi": f"%{trailing_stop * 100}"
+            })
+        else:
+            sonuclar["scalp_sinyal"] = "VERİ YETERSİZ (5m)"
 
-    # --- 15 Dakikalık Veri ---
-    son_fiyat = float(df_15m['Close'].iloc[-1])
-
-    sma_20 = df_15m['Close'].rolling(window=20).mean()
-    std_20 = df_15m['Close'].rolling(window=20).std()
-    upper_band = (sma_20 + (std_20 * 2)).iloc[-1]
-    lower_band = (sma_20 - (std_20 * 2)).iloc[-1]
-
-    vol_sum = df_15m['Volume'].rolling(14).sum()
-    vwap = (df_15m['Close'] * df_15m['Volume']).rolling(14).sum() / vol_sum
-    son_vwap = round(vwap.iloc[-1], 2)
-
-    son_rsi_15m = float(compute_rsi(df_15m['Close'], 14).iloc[-1])
-
-    # --- Günlük Veri ---
-    close_1d = df_1d['Close']
-    atr_14_1d = float(compute_atr(df_1d, 14).iloc[-1])
-    atr_yuzde = (atr_14_1d / son_fiyat) * 100
-
-    son_rsi_1d = float(compute_rsi(close_1d, 14).iloc[-1])
-
-    gunluk_getiri = close_1d.pct_change().dropna()
-    ema_getiri = gunluk_getiri.ewm(span=10, adjust=False).mean().iloc[-1] * 100
-
-    if son_rsi_1d > 75:
-        momentum = -0.15
-    elif son_rsi_1d < 30:
-        momentum = 0.15
-    else:
-        momentum = (son_rsi_1d - 50) / 100.0
-
-    vol_s_1d = df_1d['Volume'].tail(10)
-    hacim_kati = float(vol_s_1d.iloc[-1] / vol_s_1d.mean()) if vol_s_1d.mean() > 0 else 1.0
-    hacim_etkisi = min(hacim_kati, 2.0)
-
-    # --- Tahminler ---
-    tahminler_yuzde = {}
-    kumbulatif_fiyat = son_fiyat
-    aktif_momentum = momentum
-
-    for gun in range(1, 4):
-        gun_artis_yuzde = ema_getiri + (aktif_momentum * atr_yuzde * hacim_etkisi)
-        gun_artis_yuzde = max(min(gun_artis_yuzde, atr_yuzde * 1.5), -atr_yuzde * 1.5)
-        kumbulatif_fiyat = kumbulatif_fiyat * (1 + (gun_artis_yuzde / 100))
-        tahminler_yuzde[f'{gun}. Gün Tahmin (%)'] = round(
-            ((kumbulatif_fiyat - son_fiyat) / son_fiyat) * 100, 2)
-        aktif_momentum *= 0.5
-        hacim_etkisi = max(1.0, hacim_etkisi * 0.8)
-
-    yarin_alis = round(son_fiyat - (atr_14_1d * 0.35), 2)
-    potansiyel_pik = round(upper_band + (atr_14_1d * 0.1), 2)
-
-    # --- Sinyal ---
-    if son_fiyat >= upper_band and son_rsi_15m > 70:
-        sinyal = "PİK YAPTI (SAT)"
-        strateji_metni = "Fiyat Bollinger üst bandını aştı. Geri çekilme riski yüksek."
-        saatlik_yon = -1.0
-    elif hacim_kati > 1.2 and son_fiyat > son_vwap and tahminler_yuzde['1. Gün Tahmin (%)'] > 0:
-        sinyal = "GÜÇLÜ AL & TUT"
-        strateji_metni = f"Fiyat VWAP üzerinde ve momentum yüksek. Pik hedefi {potansiyel_pik} SEK."
-        saatlik_yon = 1.5
-    elif son_fiyat < lower_band and son_rsi_15m < 30:
-        sinyal = "DİPTEN TEPKİ (AL)"
-        strateji_metni = f"Hisse gün içi aşırı satıldı. {son_vwap} SEK seviyesine kadar tepki sıçraması beklenebilir."
-        saatlik_yon = 1.0
-    else:
-        sinyal = "NÖTR (İZLE)"
-        strateji_metni = "Net bir trend yok, yatay seyir hakim."
-        saatlik_yon = 0.0
-
-    beklenen_1h_getiri = round((atr_14_1d / son_fiyat / 4) * 100 * saatlik_yon, 2)
-
-    result = {
-        'Şirket Adı': sirket_adi,
-        'Kod': h_clean,
-        'Son Fiyat (SEK)': round(son_fiyat, 2),
-        '1 Saatlik Yön (%)': beklenen_1h_getiri,
-        '1. Gün Tahmin (%)': tahminler_yuzde['1. Gün Tahmin (%)'],
-        '2. Gün Tahmin (%)': tahminler_yuzde['2. Gün Tahmin (%)'],
-        '3. Gün Tahmin (%)': tahminler_yuzde['3. Gün Tahmin (%)'],
-        'Sinyal': sinyal,
-        'RSI (15m)': round(son_rsi_15m, 1),
-        'VWAP': son_vwap,
-        'Potansiyel Pik': potansiyel_pik,
-        'Yarınki Alış': yarin_alis,
-        'Strateji': strateji_metni,
-        'Analiz Zamanı': datetime.now().strftime("%Y-%m-%d %H:%M")
-    }
-
-    # Not: SQLite kaydı ThreadPoolExecutor dışında sıralı yapılır
-    # (paralel yazım kilitleme sorununa yol açar)
-
-    return result
+    except Exception as e:
+        sonuclar["hata"] = str(e)
+        
+    return sonuclar
 
 # --- YENİ EKLENEN SCALP MODÜLÜ ---
     try:
