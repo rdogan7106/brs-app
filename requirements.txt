@@ -6,3 +6,4 @@ scikit-learn
 lightgbm
 xgboost
 yfinance==0.2.28
+pandas-ta
