@@ -1,6 +1,6 @@
 streamlit
 pandas
-numpy
+numpy==1.26.3
 requests
 scikit-learn
 lightgbm
