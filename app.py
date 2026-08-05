@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import pandas_ta as ta # VWAP ve RSI için
 import numpy as np
 import requests
 import os
@@ -8,6 +9,8 @@ import json
 import warnings
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import requests
+import yfinance as yf
 
 warnings.filterwarnings("ignore")
 
@@ -37,6 +40,27 @@ try:
     _HAS_SKLEARN = True
 except ImportError:
     pass
+
+
+# ---------------------------------------------------------
+# Telegram
+# ---------------------------------------------------------
+def send_telegram_message(rapor_metni, bot_token="BURAYA_TELEGRAM_BOT_TOKEN_GELECEK", chat_id="BURAYA_CHAT_ID_GELECEK"):
+    """Telegram üzerinden formatlı scalp raporunu gönderir."""
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": rapor_metni,
+        "parse_mode": "HTML"
+    }
+    try:
+        response = requests.post(url, json=payload)
+        if response.status_code == 200:
+            print("✅ Telegram bildirimi başarıyla gönderildi!")
+        else:
+            print(f"⚠️ Telegram hatası: {response.status_code} - {response.text}")
+    except Exception as e:
+        print(f"⚠️ Telegram gönderim hatası: {e}")
 
 # ---------------------------------------------------------
 # SAYFA YAPILANDIRMASI & MODERN CSS
@@ -1163,6 +1187,49 @@ def tek_hisse_analiz_et(h_kod):
 
     return result
 
+# --- YENİ EKLENEN SCALP MODÜLÜ ---
+    try:
+        # 5 dakikalık son 1 günlük veriyi çek
+        df_5m = yf.download(ticker, period="1d", interval="5m", progress=False)
+        
+        if not df_5m.empty and len(df_5m) > 10:
+            # VWAP ve RSI hesaplama
+            df_5m.ta.vwap(append=True)
+            df_5m.ta.rsi(length=14, append=True)
+            
+            son_fiyat = float(df_5m['Close'].iloc[-1])
+            son_vwap = float(df_5m['VWAP_D'].iloc[-1])
+            son_rsi = float(df_5m['RSI_14'].iloc[-1])
+            
+            # Scalp Sinyali Mantığı ve Trailing Stop Hesaplama
+            scalp_durum = "YATAY"
+            tp_fiyati = 0.0
+            stop_fiyati = 0.0
+            
+            # YÜKSELİŞ BEKLENTİSİ (Fiyat VWAP üstünde ve RSI aşırı satımdan dönüyorsa)
+            if son_fiyat > son_vwap and 30 < son_rsi < 55:
+                scalp_durum = "YUKSELIS"
+                tp_fiyati = son_fiyat * 1.015  # %1.5 Take Profit hedefi
+                stop_fiyati = son_fiyat * 0.993 # %0.7 İzleyen Stop (Trailing Stop) başlangıcı
+                
+            # DÜŞÜŞ/DÜZELTME BEKLENTİSİ (RSI şişmiş ve dirençte)
+            elif son_rsi > 70:
+                scalp_durum = "DUSUS"
+            
+            # Analiz sonucuna scalp verilerini ekle
+            analiz_sonucu = {
+                "Ticker": ticker,
+                "Fiyat": round(son_fiyat, 2),
+                "RSI_5m": round(son_rsi, 1),
+                "Scalp_Yon": scalp_durum,
+                "TP": round(tp_fiyati, 2),
+                "Stop": round(stop_fiyati, 2)
+            }
+            return analiz_sonucu
+            
+    except Exception as e:
+        print(f"{ticker} için Scalp analizi başarısız: {e}")
+        return None
 
 # ===================================================================
 # SIDEBAR — Hisse Listesi & Ayarlar
@@ -1817,3 +1884,46 @@ with tab_gecmis:
                             for k, v in sorted(fi.items(), key=lambda x: x[1], reverse=True)
                         ])
                         st.bar_chart(fi_df.set_index('Feature'), use_container_width=True)
+
+def scalp_raporu_olustur_ve_gonder(analiz_sonuclari_listesi):
+    """
+    analiz_sonuclari_listesi: tek_hisse_analiz_et fonksiyonundan dönen 
+    sözlüklerin (dictionary) bulunduğu liste.
+    """
+    yukselis_beklenenler = []
+    dusus_beklenenler = []
+    
+    # Hisseleri sinyallerine göre ayır
+    for sonuc in analiz_sonuclari_listesi:
+        if sonuc is None: continue
+        
+        if sonuc["Scalp_Yon"] == "YUKSELIS":
+            yukselis_beklenenler.append(
+                f"• {sonuc['Ticker']} | Fiyat: {sonuc['Fiyat']} | RSI: {sonuc['RSI_5m']} | TP: {sonuc['TP']} (Stop: {sonuc['Stop']})"
+            )
+        elif sonuc["Scalp_Yon"] == "DUSUS":
+            dusus_beklenenler.append(
+                f"• {sonuc['Ticker']} | Fiyat: {sonuc['Fiyat']} | RSI: {sonuc['RSI_5m']} (Dirençte)"
+            )
+            
+    # Eğer hiçbir sinyal yoksa rapor atma
+    if not yukselis_beklenenler and not dusus_beklenenler:
+        return
+        
+    # Tam istediğiniz Telegram mesaj formatı
+    rapor_metni = "📊 <b>1 SAATLİK SCALPING RAPORU</b> 📊\n\n"
+    
+    if yukselis_beklenenler:
+        rapor_metni += "🟢 <b>1 Saat İçinde Yükseliş Beklenenler:</b>\n"
+        rapor_metni += "\n".join(yukselis_beklenenler) + "\n\n"
+        
+    if dusus_beklenenler:
+        rapor_metni += "🔴 <b>1 Saat İçinde Düşüş / Düzeltme Beklenenler:</b>\n"
+        rapor_metni += "\n".join(dusus_beklenenler) + "\n"
+        
+    # Telegram'a gönder
+    send_telegram_message(rapor_metni)
+
+# Kullanım Örneği:
+# sonuclar = [tek_hisse_analiz_et("ELUX-B.ST"), tek_hisse_analiz_et("VOLV-B.ST"), tek_hisse_analiz_et("HM-B.ST")]
+# scalp_raporu_olustur_ve_gonder(sonuclar)
