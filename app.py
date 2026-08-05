@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import pandas_ta as ta # VWAP ve RSI için
+import pandas_ta as ta
 import numpy as np
 import requests
 import os
