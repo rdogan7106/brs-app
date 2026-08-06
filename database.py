@@ -1,6 +1,7 @@
 import requests
 import pandas as pd
 from datetime import datetime
+import sqlite3
 from indicators import compute_rsi, compute_atr
 
 session = requests.Session()
@@ -89,15 +90,35 @@ def tek_hisse_analiz_et(h_kod):
         sinyal, strateji_metni, saatlik_yon = "NÖTR (İZLE)", "Net bir trend yok, yatay seyir hakim.", 0.0
 
     beklenen_1h_getiri = round((atr_14_1d / son_fiyat / 4) * 100 * saatlik_yon, 2)
-    # EKLENEN ÖZELLİK: 1 Saatlik Hedef Fiyat
     hedef_1h_fiyat = round(son_fiyat * (1 + (beklenen_1h_getiri / 100)), 2)
 
     return {
         'Şirket Adı': sirket_adi, 'Kod': h_clean, 'Son Fiyat (SEK)': round(son_fiyat, 2),
         '1 Saatlik Yön (%)': beklenen_1h_getiri,
-        '1 Saatlik Hedef Fiyat (SEK)': hedef_1h_fiyat,  # Yeni Veri Eklendi!
+        '1 Saatlik Hedef Fiyat (SEK)': hedef_1h_fiyat,
         '1. Gün Tahmin (%)': tahminler_yuzde['1. Gün Tahmin (%)'], '2. Gün Tahmin (%)': tahminler_yuzde['2. Gün Tahmin (%)'], '3. Gün Tahmin (%)': tahminler_yuzde['3. Gün Tahmin (%)'],
         'Sinyal': sinyal, 'RSI (15m)': round(son_rsi_15m, 1), 'VWAP': son_vwap,
         'Potansiyel Pik': potansiyel_pik, 'Yarınki Alış': yarin_alis, 'Strateji': strateji_metni,
         'Analiz Zamanı': datetime.now().strftime("%Y-%m-%d %H:%M")
     } 
+
+# --- EKLENEN KISIM: app.py'ın çağırdığı 'db' nesnesi ---
+class Database:
+    def __init__(self, db_name="app_data.db"):
+        self.db_name = db_name
+        self.init_db()
+
+    def init_db(self):
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+
+# app.py'ın "from database import db" ile aradığı nesne:
+db = Database()
