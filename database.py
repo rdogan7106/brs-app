@@ -100,4 +100,4 @@ def tek_hisse_analiz_et(h_kod):
         'Sinyal': sinyal, 'RSI (15m)': round(son_rsi_15m, 1), 'VWAP': son_vwap,
         'Potansiyel Pik': potansiyel_pik, 'Yarınki Alış': yarin_alis, 'Strateji': strateji_metni,
         'Analiz Zamanı': datetime.now().strftime("%Y-%m-%d %H:%M")
-    }
+    } 
