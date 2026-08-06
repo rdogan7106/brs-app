@@ -1,9 +1,8 @@
 streamlit
 pandas
-numpy==1.26.3
+numpy
 requests
 scikit-learn
 lightgbm
 xgboost
 yfinance==0.2.28
-pandas-ta
