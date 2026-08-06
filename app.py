@@ -242,7 +242,7 @@ with tab_ml:
 # --- TAB 4: RİSK YÖNETİMİ ---
 with tab_risk:
     st.markdown("### 🛡️ Risk Yönetimi Hesaplayıcı")
-    rk_hisse = st.selectbox("Hisse Seç:", options=hisseler or ["ELUX-B"], format_func=format_hisse)
+    rk_hisse = st.selectbox("Hisse Seç:", options=hisseler or ["ELUX-B"], format_func=format_hisse, key="rk_hisse_select")
     
     if st.button("📥 Veri Çek", key="rk_fetch"):
         df_rk, _ = fetch_yahoo_data(rk_hisse, "1d", "3mo")
